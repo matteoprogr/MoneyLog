@@ -23,12 +23,9 @@ document.getElementById("deleteSpesaBtn").addEventListener("click", deleteSpesaB
 document.getElementById("deleteCategoriaBtn").addEventListener("click", deleteCategoriaBtn);
 document.getElementById("importoMinEntrata").addEventListener("input", createCriteri);
 document.getElementById("importoMaxEntrata").addEventListener("input", createCriteri);
-document.getElementById("invioBtn").addEventListener("click", uploadExcel);
-document.getElementById("downloadBtn").addEventListener("click", downloadExcel);
 document.getElementById("ricerca-categorie").addEventListener("input", categorieCreateComponent);
 document.getElementById("indietro").addEventListener("click", function(event) {  setDirezioneData(event, false); });
 document.getElementById("avanti").addEventListener("click", function(event) { setDirezioneData(event, false); });
-document.getElementById("addSpeseExcelBtn").addEventListener("click", saveSpeseExcel);
 document.getElementById("indietroGraph").addEventListener("click", function(event) { setDirezioneData(event, true); });
 document.getElementById("avantiGraph").addEventListener("click", function(event) { setDirezioneData(event, true); });
 document.getElementById("addCategoriaBtn").addEventListener("click", saveNewCategoria);
@@ -810,27 +807,6 @@ async function deleteSpesaBtn() {
     createCriteri();
 }
 
-
-async function deleteSpesaBtnExcel() {
-    const selectedCards = document.querySelectorAll('.spesa.selected');
-    if (selectedCards.length === 0) {
-        showErrorToast("Seleziona almeno una riga da eliminare.","error");
-        return;
-    }
-
-    const totaleHTML = document.getElementById("lista-spese-excel-totale");
-    let totaleExcel = -Math.abs(parseFloat(totaleHTML.innerText));
-    let valuesSelected = 0;
-    selectedCards.forEach(card => {
-        valuesSelected += Math.abs(estraiImporto(card.querySelector('.spesa-body .importo').innerText));
-        card.remove();
-    });
-
-    let totCell = totaleHTML.querySelector(".importo-totale");
-    const totValue = estraiImporto(totCell.innerText);
-    const newTot = (totValue + valuesSelected).toFixed(2);
-    totCell.textContent = newTot + " €";
-}
 
 function estraiImporto(str) {
   const clean = str.replace(/[^0-9\.-]+/g, "");

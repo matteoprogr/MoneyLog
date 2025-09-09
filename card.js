@@ -128,21 +128,6 @@ export function nessunaCategoriaComponent(tipo) {
                return container;
 }
 
-export function explainButtonComponent() {
-        const container = document.createElement("div");
-        container.classList.add("explainButtonContainer");
-           container.innerHTML = `
-                <div>
-                  <span class="rowExplain">➕   Salva tutte le uscite caricate</span>
-                  <span class="rowExplain">🗑️   Elimina le uscite selezionate</span>
-                  <span class="rowExplain">📥   Esporta uscite in Excel</span>
-                </div>
-
-           `;
-
-               return container;
-}
-
 
 export function categoriaComponent(categoria) {
     const container = document.createElement("div");

@@ -417,118 +417,115 @@ async function PulisciDatabase() {
   }
 }
 
-
-
-////////////////  EXPORT DATABASE ////////////////////////
-document.getElementById('btnExportJSON').addEventListener('click', esportaDatabase);
-async function esportaDatabase() {
-    const overlaySpinner = document.getElementById('spinnerOverlay');
-  try {
-  overlaySpinner.style.display = 'flex';
-  const spese = await queryTrns({},false);
-  const entrate = await queryTrns({},true);
-
-  const result = {
-          id: [],
-          dataValuta: [],
-          categoria: [],
-          descrizione: [],
-          valore: [],
-          totale: 0
-      };
-
-  spese.forEach(item => {
-          result.id.push(item.id);
-          result.dataValuta.push(item.data);
-          result.categoria.push(item.categoria);
-          result.descrizione.push(item.descrizione || "");
-          result.valore.push(item.importo);
-      });
-
-    entrate.forEach(item => {
-            result.id.push(item.id);
-            result.dataValuta.push(item.data);
-            result.categoria.push(item.categoria);
-            result.descrizione.push(item.descrizione || "");
-            result.valore.push(item.importo);
-        });
-
-
-  }catch (error) {
-    console.error('Errore durante l\'esportazione dei dati:', error);
-  }finally{
-    overlaySpinner.style.display = 'none';
-  }
-
-}
-
-const fileInput = document.getElementById('fileImport');
-const btnImport = document.getElementById('btnImport');
-
-fileInput.addEventListener('change', () => {
-  btnImport.disabled = fileInput.files.length === 0;
-});
-
-btnImport.addEventListener('click', () => {
-  const file = fileInput.files[0];
-  if (file) {
-    importaDatabase(file);
-    fileInput.value = "";
-  }
-});
-
-/////////////////////////  IMPORT  ////////////////////////////////////////
-async function importaDatabase(file) {
-        const overlaySpinner = document.getElementById('spinnerOverlay');
-      try {
-        overlaySpinner.style.display = 'flex';
-        const formData = new FormData();
-        formData.append("file", file);
-        const response = await fetch("/api/excel/import", {
-          method: "POST",
-          body: formData
-        });
-
-        if (!response.ok) {
-          showErrorToast("Errore durante l'importazione", "error");
-          throw new Error("Errore nel caricamento del file");
-        }
-
-        const result = await response.json();
-        const transazioni = parseDataTabella(result);
-
-        for (const trns of transazioni) {
-            if(trns.importo < 0){
-                await saveSpesa(trns);
-            }else if(trns.importo > 0){
-                await saveEntrata(trns);
-            }
-        }
-
-        showToast("Importazione completata!", "success");
-      } catch (error) {
-        showErrorToast("Errore durante l'importazione", "error");
-      }finally{
-        overlaySpinner.style.display = 'none';
-      }
-}
-
- function parseDataTabella(dataTabella) {
-      const transazioni = [];
-
-      for (let i = 0; i < dataTabella.categoria.length; i++) {
-        transazioni.push({
-          id: dataTabella.id[i],
-          data: dataTabella.dataValuta[i],
-          categoria: dataTabella.categoria[i],
-          descrizione: dataTabella.descrizione[i],
-          importo: dataTabella.valore[i]
-        });
-      }
-
-      return transazioni;
- }
-
-
-
-
+//
+//
+//////////////////  EXPORT DATABASE ////////////////////////
+//document.getElementById('btnExportJSON').addEventListener('click', esportaDatabase);
+//async function esportaDatabase() {
+//    const overlaySpinner = document.getElementById('spinnerOverlay');
+//  try {
+//  overlaySpinner.style.display = 'flex';
+//  const spese = await queryTrns({},false);
+//  const entrate = await queryTrns({},true);
+//
+//  const result = {
+//          id: [],
+//          dataValuta: [],
+//          categoria: [],
+//          descrizione: [],
+//          valore: [],
+//          totale: 0
+//      };
+//
+//  spese.forEach(item => {
+//          result.id.push(item.id);
+//          result.dataValuta.push(item.data);
+//          result.categoria.push(item.categoria);
+//          result.descrizione.push(item.descrizione || "");
+//          result.valore.push(item.importo);
+//      });
+//
+//    entrate.forEach(item => {
+//            result.id.push(item.id);
+//            result.dataValuta.push(item.data);
+//            result.categoria.push(item.categoria);
+//            result.descrizione.push(item.descrizione || "");
+//            result.valore.push(item.importo);
+//        });
+//
+//
+//  }catch (error) {
+//    console.error('Errore durante l\'esportazione dei dati:', error);
+//  }finally{
+//    overlaySpinner.style.display = 'none';
+//  }
+//
+//}
+//
+//const fileInput = document.getElementById('fileImport');
+//const btnImport = document.getElementById('btnImport');
+//
+//fileInput.addEventListener('change', () => {
+//  btnImport.disabled = fileInput.files.length === 0;
+//});
+//
+//btnImport.addEventListener('click', () => {
+//  const file = fileInput.files[0];
+//  if (file) {
+//    importaDatabase(file);
+//    fileInput.value = "";
+//  }
+//});
+//
+///////////////////////////  IMPORT  ////////////////////////////////////////
+//async function importaDatabase(file) {
+//        const overlaySpinner = document.getElementById('spinnerOverlay');
+//      try {
+//        overlaySpinner.style.display = 'flex';
+//        const formData = new FormData();
+//        formData.append("file", file);
+//
+//
+//        if (!response.ok) {
+//          showErrorToast("Errore durante l'importazione", "error");
+//          throw new Error("Errore nel caricamento del file");
+//        }
+//
+//        const result = await response.json();
+//        const transazioni = parseDataTabella(result);
+//
+//        for (const trns of transazioni) {
+//            if(trns.importo < 0){
+//                await saveSpesa(trns);
+//            }else if(trns.importo > 0){
+//                await saveEntrata(trns);
+//            }
+//        }
+//
+//        showToast("Importazione completata!", "success");
+//      } catch (error) {
+//        showErrorToast("Errore durante l'importazione", "error");
+//      }finally{
+//        overlaySpinner.style.display = 'none';
+//      }
+//}
+//
+// function parseDataTabella(dataTabella) {
+//      const transazioni = [];
+//
+//      for (let i = 0; i < dataTabella.categoria.length; i++) {
+//        transazioni.push({
+//          id: dataTabella.id[i],
+//          data: dataTabella.dataValuta[i],
+//          categoria: dataTabella.categoria[i],
+//          descrizione: dataTabella.descrizione[i],
+//          importo: dataTabella.valore[i]
+//        });
+//      }
+//
+//      return transazioni;
+// }
+//
+//
+//
+//

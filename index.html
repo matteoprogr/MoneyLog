@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MoneyLog</title>
+    <link rel="stylesheet" href="css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/it.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#333333">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+
+    <!-- Per iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-orientation" content="portrait">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="mobile-nav">
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+    <div class="nav-links">
+        <a href="#" data-target="movimenti">Movimenti</a>
+        <a href="#" data-target="grafici">Grafici</a>
+        <a href="#" data-target="elabora-excel">Elabora Excel</a>
+        <a href="#" data-target="gestisci-dati">Gestione Dati</a>
+        <a href="#" data-target="categorie-section">Categorie</a>
+        <a href="#" data-target="info">Info</a>
+    </div>
+</nav>
+
+<!-- Pagina Movimenti //////////////////////////////////////////////////////////////-->
+<section id="movimenti" class="page-section active">
+    <div class="movimenti-tabs">
+        <span class="tab active" data-target="traccia-spesa-slide">Uscite</span>
+        <span class="tab" data-target="traccia-entrate-slide">Entrate</span>
+    </div>
+
+    <div class="movimenti-container">
+        <div class="movimento-slide" id="traccia-spesa-slide">
+                <div id="lista-spese-totale"></div>
+                <div id="zero-spese"></div>
+            <div id="lista-spese"></div>
+        </div>
+
+        <div class="movimento-slide" id="traccia-entrate-slide">
+                <div id="lista-entrate-totale"></div>
+                <div id="zero-entrate"></div>
+            <div id="lista-entrate"></div>
+        </div>
+
+        <div class="fullscreenBtnContainer">
+            <button class="fullscreenBtn" id="addSpesaBtn">➕ </button>
+            <button class="fullscreenBtn" id="getSpesaBtn">🔍 </button>
+            <button class="fullscreenBtn" id="deleteSpesaBtn">🗑️</button>
+        </div>
+    </div>
+
+
+
+    <!-- OVERLAY INSERT -->
+    <div id="spesaFormOverlay">
+        <form id="spesaForm">
+            <div class="input-group">
+                <input type="text" id="categoria"  maxlength="25" placeholder="Seleziona o inserisci una categoria..."  required>
+            <div class="categorie-cards" id="categorieCardsAdd"></div>
+            </div>
+            <div class="input-group row">
+                <input class="importoOverlay" type="date" id="data" required>
+                <input class="importoOverlay" type="number" step="0.01" id="importo" placeholder="Importo (€)" required>
+            </div>
+            <div class="input-group">
+                <input type="text" id="descrizione" maxlength="45" placeholder="Descrizione">
+            </div>
+            <div class="button-group row">
+                <button class="overlayButton"  type="submit">Salva</button>
+                <button class="overlayButton" type="button" id="closeFormBtn">Annulla</button>
+            </div>
+        </form>
+    </div>
+
+
+    <!-- OVERLAY RICERCA -->
+    <div id="overlayRicerca">
+        <div class="input-group row">
+            <button class="frecciaBtn" type="button" id="indietro"> < </button>
+            <input type="text" id="date-range">
+            <button class="frecciaBtn" type="button" id="avanti"> > </button>
+        </div>
+        <div class="input-group">
+            <input  type="text" id="ricerca-categorie-over" placeholder="Cerca fra le tue categorie">
+            <div class="categorie-cards" id="categorieCardsEntrata"></div>
+        </div>
+        <div class="input-group row">
+            <input class="importoOverlay" type="number" step="0.01" id="importoMinEntrata" placeholder="Min (€)">
+            <input class="importoOverlay" type="number" step="0.01" id="importoMaxEntrata" placeholder="Max (€)">
+        </div>
+    </div>
+
+    <!-- OVERLAY EDIT SPESA -->
+    <div id="editSpesaFormOverlay">
+        <form id="editForm">
+            <input type="hidden" id="editSpesaId">
+
+            <div class="input-group">
+                <input type="text"  id="editCategoria" maxlength="25" name="categoria" placeholder="Seleziona o inserisci una categoria..." required>
+                <div class="categorie-cards" id="categorieCardsEdit"></div>
+            </div>
+            <div class="input-group row">
+                <input class="importoOverlay" type="date" id="editData" placeholder=" " required>
+                <input class="importoOverlay" type="number" step="0.01" id="editImporto" placeholder="Importo (€)" required>
+            </div>
+            <div class="input-group">
+                <input type="text" id="editDescrizione" maxlength="35" placeholder="Descrizione">
+            </div>
+            <div class="button-group row">
+                <button class="overlayButton"  type="submit">Salva</button>
+                <button class="overlayButton" type="button" id="closeEditFormBtn">Annulla</button>
+            </div>
+        </form>
+
+    </div>
+</section>
+
+
+<!-- Pagina Grafici //////////////////////////////////////////////////////////////-->
+<section id="grafici" class="page-section">
+    <div class="sticky-bar">
+        <h2>Grafici</h2>
+    </div>
+    <div class="chart-wrapper">
+        <div id="chart"></div>
+    </div>
+
+    <div class="movimenti-tabs">
+        <span class="tab active" data-target="graph-spesa-slide">Uscite</span>
+        <span class="tab" data-target="graph-entrate-slide">Entrate</span>
+    </div>
+
+    <div class="movimenti-container graph">
+        <div class="movimento-slide-graph" id="graph-spesa-slide">
+            <div class="chart-wrapper">
+                <div id="chartCakeSpese"></div>
+            </div>
+        </div>
+
+        <div class="movimento-slide-graph" id="graph-entrate-slide">
+            <div class="chart-wrapper">
+                <div id="chartCakeEntrate"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="input-group row">
+        <button class="frecciaBtn" type="button" id="indietroGraph"> < </button>
+        <input type="text" id="date-range-graph">
+        <button class="frecciaBtn" type="button" id="avantiGraph"> > </button>
+    </div>
+
+</section>
+
+
+<!-- Pagina Elabora Excel //////////////////////////////////////////////////////////////-->
+<section id="elabora-excel" class="page-section">
+
+            <div class="excel-container">
+                <div class="sticky-bar">
+                    <h2>Importa Excel</h2>
+                    <input type="file" id="fileInput" name="file" accept=".xls,.xlsx" required/>
+
+                    <div class="input-group-excel row">
+                        <input class="dateExcel" type="date" id="startDate" name="startDate">
+                        <input class="dateExcel" type="date" id="endDate" name="endDate">
+                    </div>
+
+                        <select id="nomeBanca" required>
+                            <option value="" disabled selected> seleziona banca </option>
+                            <option value="ingDirect">IngDirect</option>
+                        </select>
+                        <button id="invioBtn" type="button">Invia</button>
+
+                    <div id="lista-spese-excel-totale"></div>
+                </div>
+
+                <div id="lista-spese-excel"></div>
+
+                <div class="fullscreenBtnContainer">
+                    <button class="fullscreenBtn" id="addSpeseExcelBtn">➕</button>
+                    <button class="fullscreenBtn" id="deleteExcelSpesaBtn">🗑️</button>
+                    <button class="fullscreenBtn" id="downloadBtn">📥</button>
+                </div>
+            </div>
+
+</section>
+
+
+<!-- Pagina Gestisci dati //////////////////////////////////////////////////////////////-->
+<section id="gestisci-dati" class="page-section">
+    <h2>Gestione dati</h2>
+
+    <div id="spinnerOverlay" class="spinner-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="btn">
+        <h3>Importa dati</h3>
+        <input type="file" id="fileImport" name="file" accept=".xls,.xlsx" required/>
+        <button id="btnImport" disabled>Importa</button>
+    </div>
+
+    <div class="btn">
+        <h3>Esporta dati</h3>
+        <button id="btnExportJSON">Esporta</button>
+    </div>
+
+    <div class="btn">
+        <h3>Cancella tutti i dati</h3>
+        <button id="btnDeleteData">Cancella tutto</button>
+    </div>
+
+    <div id="confirmModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Conferma Eliminazione</h2>
+            <p>Sei sicuro di voler eliminare TUTTO il database? Questa operazione non può essere annullata.</p>
+            <div class="modal-actions">
+                <button id="confirmYes" class="btn-danger">Elimina</button>
+                <button id="confirmNo" class="btn-secondary">Annulla</button>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+
+
+<!-- Pagina Gestisci Categorie //////////////////////////////////////////////////////////////-->
+<section id="categorie-section" class="page-section">
+    <div class="sticky-bar">
+        <h2>Le tue categorie</h2>
+        <input  type="text" id="ricerca-categorie" placeholder="Cerca fra le tue categorie">
+        <button id="addCategoriaBtn">Aggiungi categoria</button>
+    </div>
+    <div class="excel-container">
+        <div id="zero-categorie"></div>
+        <div id="gestione-categorie"></div>
+    </div>
+    <div class="fullscreenBtnContainer">
+        <button class="fullscreenBtn" id="deleteCategoriaBtn">🗑️</button>
+    </div>
+
+</section>
+
+
+<!-- Pagina Informazioni //////////////////////////////////////////////////////////////-->
+<section id="info" class="page-section info-section">
+        <h2>Informazioni</h2>
+    <p>
+        Con <strong>MoneyLog</strong> puoi avere sempre sotto controllo le tue entrate e uscite quotidiane, senza complicazioni e con la massima attenzione alla privacy.
+        L’app non salva alcun dato al di fuori del tuo dispositivo. Tutto rimane solo a te.
+    </p>
+
+    <ul class="info-list">
+        <li><strong>Movimenti:</strong> registra facilmente sia le entrate che le uscite e consulta tutti i movimenti effettuati per organizzare meglio le tue finanze.</li>
+        <li><strong>Grafici:</strong> visualizza in modo chiaro i movimenti avvenuti durante l’anno o di singoli mesi grazie a grafici intuitivi.</li>
+        <li><strong>Elabora Excel:</strong> importa il file delle uscite bancarie in formato Excel e ottieni subito una lettura chiara dei dati.</li>
+        <li><strong>Gestione Dati:</strong> i dati restano disponibili solo finché la cronologia non viene cancellata. Puoi inoltre caricare e scaricare i tuoi movimenti in modo sicuro. Una volta eliminata la cronologia, tutte le informazioni andranno perse.</li>
+        <li><strong>Categorie:</strong> gestisci le categorie esistenti, aggiungile, modifica quelle esistenti, eliminale e cerca facilmente tra le categorie disponibili.</li>
+    </ul>
+</section>
+
+
+<script type="module" src="main.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/it.js"></script>
+
+</body>
+</html>

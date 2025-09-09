@@ -21,7 +21,6 @@ import { saveCategoria } from './queryDexie.js';
 //  EVENT LISTENER //////////////////////////////////
 document.getElementById("deleteSpesaBtn").addEventListener("click", deleteSpesaBtn);
 document.getElementById("deleteCategoriaBtn").addEventListener("click", deleteCategoriaBtn);
-document.getElementById("deleteExcelSpesaBtn").addEventListener("click", deleteSpesaBtnExcel);
 document.getElementById("importoMinEntrata").addEventListener("input", createCriteri);
 document.getElementById("importoMaxEntrata").addEventListener("input", createCriteri);
 document.getElementById("invioBtn").addEventListener("click", uploadExcel);
@@ -71,12 +70,6 @@ document.querySelectorAll('nav a').forEach(link => {
         }
         if (targetId === 'categorie-section') {
             categorieCreateComponent()
-        }
-        if(targetId === 'elabora-excel'){
-            const listTraccia = document.getElementById("lista-spese");
-            listTraccia.innerHTML = "";
-            setDataExcel();
-            explainButton();
         }
         if(targetId === "grafici"){
             setDateRangeGraph();
@@ -433,16 +426,6 @@ function setDirezioneData(event,graph){
 }
 
 
-function setDataExcel(){
-    const start = document.getElementById('startDate');
-    const end = document.getElementById('endDate');
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1, 2, 0, 0);
-    start.value = startOfMonth.toISOString().split("T")[0];
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1, 1, 59, 0);
-    end.value = endOfMonth.toISOString().split("T")[0];
-}
-
 
 export function setDateRange(range = "#date-range", mese, anno) {
   let today = new Date();
@@ -631,134 +614,6 @@ async function tracciaSpeseClick(criteri) {
     }
 }
 
-
-async function uploadExcel() {
-    try {
-        const fileInput = document.getElementById("fileInput");
-        const file = fileInput.files[0];
-        const nomeBanca = document.getElementById("nomeBanca").value;
-        const startDate = document.getElementById("startDate");
-        const endDate = document.getElementById("endDate");
-        const dataInizio = startDate.value;
-        const dataFine = endDate.value;
-
-        if(!isValid(fileInput) || !isValid(nomeBanca) || nomeBanca === ""){
-            showErrorToast("Compila correttamente i campi:", "error");
-        }
-
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("nomeBanca", nomeBanca);
-        formData.append("dataInizio", dataInizio);
-        formData.append("dataFine", dataFine);
-
-        fetchUpload(formData)
-        } catch (err) {
-            showErrorToast("Errore nel recupero spese:", "error");
-        }
-}
-
-async function explainButton(){
-    const zeroExcel = document.getElementById("lista-spese-excel");
-    const zeroExcelTot = document.getElementById("lista-spese-excel-totale");
-    zeroExcel.innerHTML = "";
-    zeroExcelTot.innerHTML = "";
-    const explainComponent = explainButtonComponent();
-    zeroExcel.appendChild(explainComponent);
-}
-
-async function excelCardCreator(dati) {
-    try {
-        const listaSpese = document.getElementById("lista-spese-excel");
-        listaSpese.innerHTML = "";
-        const dataValuta = dati.dataValuta;
-        const categoria = dati.categoria;
-        const descrizione = dati.descrizione;
-        const valore = dati.valore;
-
-        const spese = dataValuta.map((data, i) => ({
-          data: data,
-          categoria: categoria[i],
-          descrizione: descrizione[i],
-          importo: valore[i]
-        }));
-
-        spese.sort((a, b) => new Date(a.data) - new Date(b.data));
-        const  totaleExcel = document.getElementById("lista-spese-excel-totale");
-
-        spese.forEach(spesa => {
-          const nodo = creaSpesaComponent(spesa,false,true);
-          listaSpese.appendChild(nodo);
-        });
-
-        const totale = creaComponentTotale(spese);
-        totaleExcel.innerHTML = "";
-
-        const totaleText = totale.innerText.trim();
-        if(totaleText !== "0.00 €") {
-            totaleExcel.appendChild(totale);
-        }
-
-    } catch (err) {
-        showErrorToast("Errore nel recupero spese:", "error");
-    }
-}
-
-async function saveSpeseExcel(){
-    const speseExcel = document.querySelectorAll(".excelSpesa.spesa.spesaColor");
-    const totale = document.getElementById("lista-spese-excel-totale");
-    const listaSpese = document.getElementById("lista-spese-excel");
-    const spese = [];
-
-    try{
-        for(const comp of speseExcel){
-        let data = comp.querySelector(".spesa-header").children[0].textContent;
-        const [giorno, mese, anno] = data.split("/");
-        data = `${anno}-${mese}-${giorno}`;
-        const descrizione = comp.querySelector(".spesa-body.spesaBodyColor").children[0].textContent;
-        let importo = comp.querySelector(".spesa-body.spesaBodyColor").children[1].textContent;
-        importo = parseFloat(importo.replace(/[^\d.-]/g, "")).toFixed(2);
-        let categoria = comp.querySelector(".spesa-footer").children[0].textContent;
-        categoria = capitalizeFirstLetter(categoria);
-        spese.push({
-          data,
-          descrizione,
-          importo,
-          categoria
-        });
-        }
-        for(const spesa of spese){
-            await saveSpesa(spesa, true);
-        }
-        showToast("Spese aggiunte con successo", "success");
-    }catch(err){
-        showErrorToast("Errore durante l'aggiunta delle spese","error");
-        return;
-    }
-
-    totale.innerHTML = "";
-    listaSpese.innerHTML = "";
-    explainButton();
-}
-
-async function fetchUpload(formData) {
-        fetch("/api/excel/upload", {
-            method: "POST",
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error("Errore nel caricamento del file");
-            }
-            return response.json();
-        })
-        .then(result => {
-            excelCardCreator(result);
-        })
-        .catch(error => {
-            showErrorToast("Errore durante l'upload", "error");
-        });
-}
 
 export async function categorieCreateComponent() {
     const catInput = document.getElementById("ricerca-categorie").value;
@@ -955,38 +810,6 @@ async function deleteSpesaBtn() {
     createCriteri();
 }
 
-async function downloadExcel(){
-
-    const dati = {
-    id : [],
-    dataValuta : [],
-    categoria : [],
-    descrizione : [],
-    valore : [],
-    totale : 0
-    }
-    const totaleHTML = document.getElementById("lista-spese-excel-totale");
-    let totaleExcel = -Math.abs(parseFloat(totaleHTML.innerText));
-    dati.totale = totaleExcel;
-
-    const excelHTML = document.getElementById("lista-spese-excel");
-    const excelCards = excelHTML.querySelectorAll(".spesa");
-
-     if (excelCards.length === 0) {
-        showErrorToast("Importa un file prima del download.","error");
-        return;
-     }
-    let i = 0;
-    excelCards.forEach( card => {
-        dati.id.push(i++)
-        dati.dataValuta.push(card.querySelector('.spesa-header .data').innerText);
-        dati.categoria.push(card.querySelector('.spesa-footer .categoria').innerText);
-        dati.descrizione.push(card.querySelector('.spesa-body .descrizione').innerText)
-        dati.valore.push(estraiImporto(card.querySelector('.spesa-body .importo').innerText));
-    });
-
-    fetchDownload(dati);
-}
 
 async function deleteSpesaBtnExcel() {
     const selectedCards = document.querySelectorAll('.spesa.selected');
@@ -1048,28 +871,6 @@ async function deleteCategoriaBtn() {
     }
 
     categorieCreateComponent();
-}
-
-export async function fetchDownload(dati) {
-        fetch("/api/excel/download", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(dati)
-        })
-        .then(response => {
-            if (!response.ok) throw new Error("Errore durante l'invio");
-            return response.blob();
-        })
-        .then(blob => {
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = "elaborazione.xlsx";
-            link.click();
-        })
-        .catch(err => console.error(err));
 }
 
 export function showToast(message, type = "success") {

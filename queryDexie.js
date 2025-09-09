@@ -1,5 +1,4 @@
   import { Dexie } from 'https://unpkg.com/dexie/dist/modern/dexie.mjs';
-  import { fetchDownload } from './main.js';
   import { showToast } from './main.js';
   import { showErrorToast } from './main.js';
   import { isValid } from './main.js';
@@ -454,7 +453,6 @@ async function esportaDatabase() {
             result.valore.push(item.importo);
         });
 
-  fetchDownload(result);
 
   }catch (error) {
     console.error('Errore durante l\'esportazione dei dati:', error);

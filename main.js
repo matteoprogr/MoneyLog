@@ -13,7 +13,6 @@ import { overlayRicerca } from './card.js';
 import { overlayEdit } from './card.js';
 import { recuperaTab } from './card.js';
 import { capitalizeFirstLetter } from './queryDexie.js';
-import { explainButtonComponent } from './card.js';
 import { saveCategoria } from './queryDexie.js';
 
 

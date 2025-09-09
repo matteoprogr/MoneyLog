@@ -32,7 +32,6 @@
     <div class="nav-links">
         <a href="#" data-target="movimenti">Movimenti</a>
         <a href="#" data-target="grafici">Grafici</a>
-        <a href="#" data-target="elabora-excel">Elabora Excel</a>
         <a href="#" data-target="gestisci-dati">Gestione Dati</a>
         <a href="#" data-target="categorie-section">Categorie</a>
         <a href="#" data-target="info">Info</a>
@@ -166,40 +165,6 @@
         <input type="text" id="date-range-graph">
         <button class="frecciaBtn" type="button" id="avantiGraph"> > </button>
     </div>
-
-</section>
-
-
-<!-- Pagina Elabora Excel //////////////////////////////////////////////////////////////-->
-<section id="elabora-excel" class="page-section">
-
-            <div class="excel-container">
-                <div class="sticky-bar">
-                    <h2>Importa Excel</h2>
-                    <input type="file" id="fileInput" name="file" accept=".xls,.xlsx" required/>
-
-                    <div class="input-group-excel row">
-                        <input class="dateExcel" type="date" id="startDate" name="startDate">
-                        <input class="dateExcel" type="date" id="endDate" name="endDate">
-                    </div>
-
-                        <select id="nomeBanca" required>
-                            <option value="" disabled selected> seleziona banca </option>
-                            <option value="ingDirect">IngDirect</option>
-                        </select>
-                        <button id="invioBtn" type="button">Invia</button>
-
-                    <div id="lista-spese-excel-totale"></div>
-                </div>
-
-                <div id="lista-spese-excel"></div>
-
-                <div class="fullscreenBtnContainer">
-                    <button class="fullscreenBtn" id="addSpeseExcelBtn">➕</button>
-                    <button class="fullscreenBtn" id="deleteExcelSpesaBtn">🗑️</button>
-                    <button class="fullscreenBtn" id="downloadBtn">📥</button>
-                </div>
-            </div>
 
 </section>
 

@@ -206,6 +206,10 @@ export async function queryTrns(criteri = {}, tabActive) {
   initDB();
   const collezione = tabActive ? db.entrate : db.spese;
 
+    if (Object.keys(criteri).length === 0) {
+      return collezione.toArray();
+    }
+
   const minImporto = criteri.importoMin != null ? criteri.importoMin : -Infinity;
   const maxImporto = criteri.importoMax != null ? criteri.importoMax : Infinity;
   const startDate = criteri.dataInizio || Dexie.minKey;
@@ -417,115 +421,113 @@ async function PulisciDatabase() {
   }
 }
 
-//
-//
 //////////////////  EXPORT DATABASE ////////////////////////
-//document.getElementById('btnExportJSON').addEventListener('click', esportaDatabase);
-//async function esportaDatabase() {
-//    const overlaySpinner = document.getElementById('spinnerOverlay');
-//  try {
-//  overlaySpinner.style.display = 'flex';
-//  const spese = await queryTrns({},false);
-//  const entrate = await queryTrns({},true);
-//
-//  const result = {
-//          id: [],
-//          dataValuta: [],
-//          categoria: [],
-//          descrizione: [],
-//          valore: [],
-//          totale: 0
-//      };
-//
-//  spese.forEach(item => {
-//          result.id.push(item.id);
-//          result.dataValuta.push(item.data);
-//          result.categoria.push(item.categoria);
-//          result.descrizione.push(item.descrizione || "");
-//          result.valore.push(item.importo);
-//      });
-//
-//    entrate.forEach(item => {
-//            result.id.push(item.id);
-//            result.dataValuta.push(item.data);
-//            result.categoria.push(item.categoria);
-//            result.descrizione.push(item.descrizione || "");
-//            result.valore.push(item.importo);
-//        });
-//
-//
-//  }catch (error) {
-//    console.error('Errore durante l\'esportazione dei dati:', error);
-//  }finally{
-//    overlaySpinner.style.display = 'none';
-//  }
-//
-//}
-//
-//const fileInput = document.getElementById('fileImport');
-//const btnImport = document.getElementById('btnImport');
-//
-//fileInput.addEventListener('change', () => {
-//  btnImport.disabled = fileInput.files.length === 0;
-//});
-//
-//btnImport.addEventListener('click', () => {
-//  const file = fileInput.files[0];
-//  if (file) {
-//    importaDatabase(file);
-//    fileInput.value = "";
-//  }
-//});
-//
-///////////////////////////  IMPORT  ////////////////////////////////////////
-//async function importaDatabase(file) {
-//        const overlaySpinner = document.getElementById('spinnerOverlay');
-//      try {
-//        overlaySpinner.style.display = 'flex';
-//        const formData = new FormData();
-//        formData.append("file", file);
-//
-//
-//        if (!response.ok) {
-//          showErrorToast("Errore durante l'importazione", "error");
-//          throw new Error("Errore nel caricamento del file");
-//        }
-//
-//        const result = await response.json();
-//        const transazioni = parseDataTabella(result);
-//
-//        for (const trns of transazioni) {
-//            if(trns.importo < 0){
-//                await saveSpesa(trns);
-//            }else if(trns.importo > 0){
-//                await saveEntrata(trns);
-//            }
-//        }
-//
-//        showToast("Importazione completata!", "success");
-//      } catch (error) {
-//        showErrorToast("Errore durante l'importazione", "error");
-//      }finally{
-//        overlaySpinner.style.display = 'none';
-//      }
-//}
-//
-// function parseDataTabella(dataTabella) {
-//      const transazioni = [];
-//
-//      for (let i = 0; i < dataTabella.categoria.length; i++) {
-//        transazioni.push({
-//          id: dataTabella.id[i],
-//          data: dataTabella.dataValuta[i],
-//          categoria: dataTabella.categoria[i],
-//          descrizione: dataTabella.descrizione[i],
-//          importo: dataTabella.valore[i]
-//        });
-//      }
-//
-//      return transazioni;
-// }
-//
-//
-//
-//
+document.getElementById('btnExportJSON').addEventListener('click', esportaDatabase);
+async function esportaDatabase() {
+  const overlaySpinner = document.getElementById('spinnerOverlay');
+  try {
+      overlaySpinner.style.display = 'flex';
+      const spese = await queryTrns({},false);
+      const entrate = await queryTrns({},true);
+
+        const result = {
+            id: [],
+            dataValuta: [],
+            categoria: [],
+            descrizione: [],
+            valore: [],
+            totale: 0
+        };
+
+        spese.forEach(item => {
+            result.id.push(item.id);
+            result.dataValuta.push(item.data);
+            result.categoria.push(item.categoria);
+            result.descrizione.push(item.descrizione || "");
+            result.valore.push(item.importo);
+            result.totale += item.importo;
+        });
+
+        entrate.forEach(item => {
+            result.id.push(item.id);
+            result.dataValuta.push(item.data);
+            result.categoria.push(item.categoria);
+            result.descrizione.push(item.descrizione || "");
+            result.valore.push(item.importo);
+            result.totale += item.importo;
+        });
+
+        // Creare un blob e farlo scaricare
+        const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "moneyLogExport.json";
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("Esportazione eseguita con successo","succes");
+    }catch(err){
+        showErrorToast("Errore nell'esportazione dei dati","error")
+    }finally{
+        overlaySpinner.style.display = 'none';
+    }
+}
+const fileInput = document.getElementById('fileImport');
+const btnImport = document.getElementById('btnImport');
+
+fileInput.addEventListener('change', () => {
+  btnImport.disabled = fileInput.files.length === 0;
+});
+
+btnImport.addEventListener('click', () => {
+  const file = fileInput.files[0];
+  if (file) {
+    importaDatabase(file);
+    fileInput.value = "";
+  }
+});
+
+///////////////////////////  IMPORT  ////////////////////////
+async function importaDatabase(file) {
+    const overlaySpinner = document.getElementById('spinnerOverlay');
+    overlaySpinner.style.display = 'flex';
+
+    try {
+        const fileContent = await file.text();
+        const result = JSON.parse(fileContent);
+        const transazioni = parseDataTabella(result);
+
+        for (const trns of transazioni) {
+            if (trns.importo < 0) {
+                await saveSpesa(trns);
+            } else if (trns.importo > 0) {
+                await saveEntrata(trns);
+            }
+        }
+
+        showToast("Importazione completata!", "success");
+
+    } catch (error) {
+        console.error(error);
+        showErrorToast("Errore durante l'importazione", "error");
+
+    } finally {
+        overlaySpinner.style.display = 'none';
+    }
+}
+
+function parseDataTabella(dataTabella) {
+    const transazioni = [];
+    for (let i = 0; i < dataTabella.categoria.length; i++) {
+        transazioni.push({
+            id: dataTabella.id[i],
+            data: dataTabella.dataValuta[i],
+            categoria: dataTabella.categoria[i],
+            descrizione: dataTabella.descrizione[i],
+            importo: dataTabella.valore[i]
+        });
+    }
+    return transazioni;
+}
+
+

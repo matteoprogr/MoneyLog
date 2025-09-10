@@ -463,7 +463,9 @@ async function esportaDatabase() {
         const a = document.createElement("a");
         a.href = url;
         a.download = "moneyLogExport.json";
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
         showToast("Esportazione eseguita con successo","succes");
     }catch(err){

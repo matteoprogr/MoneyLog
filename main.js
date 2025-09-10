@@ -277,12 +277,14 @@ const option = {
     {
       type: 'bar',
       name: 'Entrate',
-      encode: { x: 'Mese', y: 'Entrate' }
+      encode: { x: 'Mese', y: 'Entrate' },
+      itemStyle: { color: '#4caf50' }
     },
     {
       type: 'bar',
-      name: 'Spese',
-      encode: { x: 'Mese', y: 'Uscite' }
+      name: 'Uscite',
+      encode: { x: 'Mese', y: 'Uscite' },
+      itemStyle: { color: '#ff5252' }
     }
   ]
 };

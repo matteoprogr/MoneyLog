@@ -20,7 +20,7 @@ h2 {
     line-height: 1rem;
     color: #333333;
     text-align: center;
-    margin: 0.3rem auto; /* margini verticali + centratura orizzontale */
+    margin: 0.3rem auto;
     padding: 0.5rem 1rem;
     border: 1px solid rgba(0, 0, 0, 0.1);
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1),
@@ -225,15 +225,15 @@ display: none !important;
 
 .toast {
   position: fixed;
-  top: 1rem;   /* ~20px */
-  left: 4.50rem;    /* ~20px */
+  top: 1rem;
+  left: 4.50rem;
   background: #2ecc71;
   color: #fff;
-  padding: 0.75rem 1.25rem; /* ~12px 20px */
-  border-radius: 0.5rem;    /* ~8px */
-  box-shadow: 0 0.25rem 0.75rem rgba(0,0,0,0.2); /* ~4px 12px */
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.25rem 0.75rem rgba(0,0,0,0.2);
   opacity: 0;
-  transform: translateY(-50% ,1.25rem); /* ~20px */
+  transform: translateY(-50% ,1.25rem);
   transition: all 0.4s ease;
   z-index: 9999;
   font-size: 0.9rem;
@@ -495,7 +495,7 @@ display: none !important;
     margin-top: 0.5rem;
     background: #fff;
     border: 1px solid rgba(0,0,0,0.05);
-    border-radius: 0.425rem;
+    border-radius: 0.225rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 .spesaTotColor{
@@ -510,6 +510,7 @@ display: none !important;
   text-align: center;
   font-size: 1rem;
   font-weight: 550;
+  margin-right: 1rem;
   position: absolute;
   right: 1rem;
   top: 50%;
@@ -598,7 +599,9 @@ display: none !important;
   font-weight: 500;
   white-space: nowrap;
   overflow-x: auto;
+  scrollbar-width: none;
 }
+
 .importo {
   flex-basis: 35%;
   font-size: 1.25rem;
@@ -607,6 +610,7 @@ display: none !important;
   overflow-x: auto;
   margin-left: 0.2rem;
   text-align: right;
+  scrollbar-width: none;
 }
 .impColorUscita{
     color: lightcoral;
@@ -631,7 +635,7 @@ display: none !important;
   border: 1px solid rgba(0,0,0,0.05);
 }
 
-/* Bottoni stile iOS */
+
 .fullscreenBtn {
   background: #f5f5f7;
   color: #fff;
@@ -929,16 +933,16 @@ display: none !important;
 }
 
 .importoOverlay:focus {
-  border-color: #007bff; /* Colore blu per il focus */
+  border-color: #007bff;
 }
 
 
 .movimenti-container {
-    display: flex;           /* side by side */
+    display: flex;
     overflow-x: auto;
     width: 100%;
     height:100%;
-    scroll-behavior: smooth; /* animazione fluida */
+    scroll-behavior: smooth;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
 }

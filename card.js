@@ -42,7 +42,7 @@ export function creaSpesaComponent(trsn,tabActive) {
          </div>
          <div class="spesa-body ${bodyClass}">
            <span class="descrizione">${trsn.descrizione}</span>
-           <span class="importo ${impClass}">${trsn.importo.toFixed(2)} €</span>
+           <span class="importo ${impClass}">${trsn.importo.toFixed(2)}</span>
          </div>
          <div class="spesa-footer">
            <small class="categoria">${trsn.categoria}</small>
@@ -91,7 +91,7 @@ export function creaComponentTotale(trsni, tabActive) {
        container.classList.add(cardClass);
        container.innerHTML = `
          <div>
-           <span class="importo-totale ${impClass}">${totale.toFixed(2)} €</span>
+           <span class="importo-totale ${impClass}">${totale.toFixed(2)}</span>
          </div>
        `;
 

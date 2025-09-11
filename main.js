@@ -611,7 +611,7 @@ async function tracciaSpeseClick(criteri) {
         listaTransazioniTotale.innerHTML = "";
         zeroTransazioni.innerHTML = "";
         const totaleText = totale.innerText.trim();
-        if(totaleText !== "0.00 €") {
+        if(totaleText !== "0.00") {
             listaTransazioniTotale.appendChild(totale);
         }else {
         const nodo = nessunaElementoComponent(trns.tipo)

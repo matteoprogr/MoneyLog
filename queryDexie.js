@@ -38,7 +38,7 @@ async function initCategorie(){
 }
 
 /////////////////   SALVATAGGIO TRANSAZIONI   ///////////////////////////
-export async function saveSpesa(spesa, excel) {
+export async function saveSpesa(spesa) {
   try {
     initDB();
     const fomattedISO = new Date(spesa.data).toISOString().split('T')[0];
@@ -53,9 +53,6 @@ export async function saveSpesa(spesa, excel) {
 
     await saveCategoria(spesa.categoria);
     const id = await db.spese.add(data);
-    if(!excel){
-        showToast("Uscita aggiunta con successo", "success");
-    }
 
     return { success: true, id };
   } catch (error) {
@@ -340,8 +337,10 @@ export async function getCategorieArray(criteri) {
 export async function updateCategoria(oldCat, newCat, richiesta) {
     try{
         const record = await db.categorie.get(oldCat);
-        const recordNew = await db.categorie.get(newCat);
-        newCat = capitalizeFirstLetter(newCat)
+        if(isValid(newCat)){
+            const recordNew = await db.categorie.get(newCat);
+            newCat = capitalizeFirstLetter(newCat);
+        }
         if(richiesta === false){
             if (oldCat === newCat) return;
             if (!isValid(record)) return;

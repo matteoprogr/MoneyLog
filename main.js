@@ -603,7 +603,7 @@ async function tracciaSpeseClick(criteri) {
 
         listaTransazioni.innerHTML = "";
         transazioni.forEach(trns => {
-          const nodo = creaSpesaComponent(trns,tabActive,false);
+          const nodo = creaSpesaComponent(trns,tabActive);
           listaTransazioni.appendChild(nodo);
         });
 

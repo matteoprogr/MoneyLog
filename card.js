@@ -10,38 +10,39 @@ import { getCategorieArray } from './queryDexie.js';
 import { updateCategoria } from './queryDexie.js';
 import { categorieCreateComponent } from './main.js';
 
-export function creaSpesaComponent(trsn,tabActive,excel) {
+export function creaSpesaComponent(trsn,tabActive) {
 
          let cardClass = "";
          let bodyClass = "";
          let btnClass = "";
+         let impClass = "";
         if(!tabActive){
             cardClass = "spesaColor";
             bodyClass = "spesaBodyColor";
             btnClass = "btnSpesaColor";
+            impClass = "impColorUscita";
         }else if(tabActive){
             cardClass = "entrataColor";
             bodyClass = "entrataBodyColor";
             btnClass = "btnEntrataColor";
+            impClass = "impColorEntrata";
         }
 
         const container = document.createElement("div");
-        if(excel){ container.classList.add("excelSpesa"); }
 
        container.classList.add("spesa");
        container.classList.add(cardClass);
        container.setAttribute("datains", trsn.dataInserimento);
        container.setAttribute("id", trsn.id);
-       const editButtonHTML = !excel ? `<button class="spesa-btn ${btnClass}" type="button">✏️</button>` : '';
 
        container.innerHTML = `
          <div class="spesa-header">
-           <small class="data">${formatDate(trsn.data,excel)}</small>
-            ${editButtonHTML}
+           <small class="data">${formatDate(trsn.data)}</small>
+           <button class="spesa-btn ${btnClass}" type="button">✏️</button>
          </div>
          <div class="spesa-body ${bodyClass}">
            <span class="descrizione">${trsn.descrizione}</span>
-           <span class="importo">${trsn.importo.toFixed(2)} €</span>
+           <span class="importo ${impClass}">${trsn.importo.toFixed(2)} €</span>
          </div>
          <div class="spesa-footer">
            <small class="categoria">${trsn.categoria}</small>
@@ -53,21 +54,17 @@ export function creaSpesaComponent(trsn,tabActive,excel) {
            container.classList.toggle("selected");
          });
 
-         if(!excel){
-                 const editBtn = container.querySelector('.spesa-btn');
-                 editBtn.addEventListener("click", (e) => {
-                     e.stopPropagation();
-                     overlayEdit(trsn);
-                 });
-         }
+         const editBtn = container.querySelector('.spesa-btn');
+         editBtn.addEventListener("click", (e) => {
+             e.stopPropagation();
+             overlayEdit(trsn);
+         });
+
        return container;
      }
 
 
-function formatDate(dateStr,excel) {
-    if(excel){
-        return dateStr;
-    }
+function formatDate(dateStr) {
   const date = new Date(dateStr);
   return date.toLocaleDateString("it-IT");
 }
@@ -76,10 +73,13 @@ function formatDate(dateStr,excel) {
 export function creaComponentTotale(trsni, tabActive) {
          let cardClass = "";
          let bodyClass = "";
+         let impClass = "";
         if(!tabActive){
             cardClass = "spesaTotColor";
+            impClass = "impColorUscita";
         }else if(tabActive){
             cardClass = "entrataTotColor";
+            impClass = "impColorEntrata";
         }
 
     let totale = 0;
@@ -91,7 +91,7 @@ export function creaComponentTotale(trsni, tabActive) {
        container.classList.add(cardClass);
        container.innerHTML = `
          <div>
-           <span class="importo-totale">${totale.toFixed(2)} €</span>
+           <span class="importo-totale ${impClass}">${totale.toFixed(2)} €</span>
          </div>
        `;
 

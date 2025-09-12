@@ -148,6 +148,7 @@ display: none !important;
     margin-right: 1rem;
     margin-bottom: auto;
     font-weight: 600;
+    box-shadow: none;
 }
 
 .overlayButton{
@@ -600,6 +601,7 @@ display: none !important;
     align-items: center;
     justify-content: center;
     opacity: 0.7;
+    box-shadow: none;
 }
 
 

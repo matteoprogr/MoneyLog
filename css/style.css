@@ -542,11 +542,13 @@ display: none !important;
 }
 .spesa-edit{
     flex-basis: 7%;
-    padding: 0.125rem 0.25rem;
+    max-width:7%;
+    margin-left:0.5rem;
 }
 
 .spesa-content{
-    flex-basis: 93%;
+    flex-basis: 90%;
+    max-width:90%;
 }
 
 .spesa-body {
@@ -605,6 +607,7 @@ display: none !important;
 
 .descrizione {
   flex-basis: 65%;
+  max-width: 65%;
   font-size: 1.25rem;
   font-weight: 500;
   white-space: nowrap;
@@ -612,8 +615,10 @@ display: none !important;
   scrollbar-width: none;
 }
 
+
 .importo {
   flex-basis: 35%;
+  max-width: 35%;
   font-size: 1.25rem;
   font-weight: 500;
   white-space: nowrap;

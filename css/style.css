@@ -20,7 +20,7 @@ h2 {
     line-height: 1rem;
     color: #333333;
     text-align: center;
-    margin: 0.3rem auto;
+    margin: 0.6rem auto;
     padding: 0.5rem 1rem;
     border: 1px solid rgba(0, 0, 0, 0.1);
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1),
@@ -369,7 +369,7 @@ display: none !important;
   position: sticky;
   top: 0;
   z-index: 10;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 #lista-entrate-totale {
   width: 100%;
@@ -381,7 +381,7 @@ display: none !important;
   position: sticky;
   top: 0;
   z-index: 10;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 
 #zero-spese {
@@ -519,7 +519,8 @@ display: none !important;
 }
 
 .selected {
-  opacity: 0.6; /
+  opacity: 0.6;
+  color: #007aff;
 }
 
 .spesa-footer {
@@ -616,7 +617,7 @@ display: none !important;
     color: lightcoral;
 }
 .impColorEntrata{
-    color: lightgreen;
+    color: #4caf50;
 }
 
 .fullscreenBtnContainer {
@@ -673,7 +674,7 @@ display: none !important;
     position: sticky;
     top: 0;
     z-index: 10;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(12px);
 }
 
 #date-range {
@@ -827,7 +828,7 @@ display: none !important;
     0 -8px 20px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(255,255,255,0.8);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(12px);
   transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
@@ -855,7 +856,7 @@ display: none !important;
     0 -8px 20px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(255,255,255,0.8);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
@@ -882,7 +883,7 @@ display: none !important;
     0 -8px 20px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(255,255,255,0.8);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(12px);
   transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
@@ -965,7 +966,7 @@ display: none !important;
     position:sticky;
     z-index: 10;
     top: 0;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(12px);
     overflow-y: hidden;
 }
 
@@ -994,7 +995,7 @@ display: none !important;
   justify-content: center;
   align-items: center;
   background: rgba(28,28,30,0.2);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   z-index: 1000;
 }
 

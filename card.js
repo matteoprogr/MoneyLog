@@ -36,16 +36,21 @@ export function creaSpesaComponent(trsn,tabActive) {
        container.setAttribute("id", trsn.id);
 
        container.innerHTML = `
-         <div class="spesa-header">
-           <small class="data">${formatDate(trsn.data)}</small>
-           <button class="spesa-btn ${btnClass}" type="button">✏️</button>
+         <div class="spesa-card">
+
+        <div class="spesa-content">
+             <div class="spesa-body ${bodyClass}">
+               <span class="descrizione">${trsn.descrizione}</span>
+               <span class="importo ${impClass}">${trsn.importo.toFixed(2)}</span>
+             </div>
+             <div class="spesa-header">
+               <small class="categoria">${trsn.categoria}</small>
+               <small class="data">${formatDate(trsn.data)}</small>
+             </div>
          </div>
-         <div class="spesa-body ${bodyClass}">
-           <span class="descrizione">${trsn.descrizione}</span>
-           <span class="importo ${impClass}">${trsn.importo.toFixed(2)}</span>
-         </div>
-         <div class="spesa-footer">
-           <small class="categoria">${trsn.categoria}</small>
+          <div class="spesa-edit">
+                      <button class="spesa-btn ${btnClass}" type="button">✏️</button>
+                  </div>
          </div>
        `;
 

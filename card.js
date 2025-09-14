@@ -177,7 +177,7 @@ export function categoriaComponent(categoria) {
             span.textContent = newValue;
             try{ input.replaceWith(span); }catch{}
             if (oldValue !== newValue) {
-                await updateCategoria(oldValue, newValue,false);
+                await updateCategoria(oldValue, newValue,false, false);
             }
             categorieCreateComponent();
 

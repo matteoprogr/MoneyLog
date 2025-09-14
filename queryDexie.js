@@ -110,7 +110,7 @@ export async function saveCategoria(categoria) {
         richieste: 1
          });
     }else{
-        updateCategoria(categoria, null, true);
+        updateCategoria(categoria, null, true, false);
     }
 
   } catch (error) {
@@ -334,11 +334,12 @@ export async function getCategorieArray(criteri) {
 
 
 //////////// UPDATE CATEGORIE /////////////////
-export async function updateCategoria(oldCat, newCat, richiesta) {
+export async function updateCategoria(oldCat, newCat, richiesta, delTrns) {
     try{
         const record = await db.categorie.get(oldCat);
+        let recordNew;
         if(isValid(newCat)){
-            const recordNew = await db.categorie.get(newCat);
+            recordNew = await db.categorie.get(newCat);
             newCat = capitalizeFirstLetter(newCat);
         }
         if(richiesta === false){
@@ -348,8 +349,13 @@ export async function updateCategoria(oldCat, newCat, richiesta) {
             if (!isValid(recordNew)) await db.categorie.put({ ...record, categoria: newCat });
             updateCatInTrns(oldCat, newCat);
         }else if(richiesta === true){
-            const count = record.richieste +1;
-            await db.categorie.update(oldCat, { richieste: count });
+            if(delTrns === true){
+                const count = record.richieste - 1;
+                await db.categorie.update(oldCat, { richieste: count });
+            }else{
+                const count = record.richieste + 1;
+                await db.categorie.update(oldCat, { richieste: count });
+            }
         }
     }catch(err){
         showErrorToast("Errore durante l'update","error")

@@ -1,6 +1,7 @@
 import { saveSpesa } from './queryDexie.js';
 import { queryTrns } from './queryDexie.js';
 import { deleteSpese } from './queryDexie.js';
+import { updateCategoria } from './queryDexie.js';
 import { deleteCategorie } from './queryDexie.js';
 import { creaSpesaComponent } from './card.js';
 import { creaComponentTotale } from './card.js';
@@ -809,6 +810,11 @@ async function deleteSpesaBtn() {
     }
 
     await deleteSpese(criteri, tab);
+for (const card of selectedCards) {
+    const categoria = card.querySelector(".categoria");
+    const oldValue = categoria.innerText;
+    await updateCategoria(oldValue, null, true, true);
+}
 
     if(criteri.length === 1){
         showToast("Spesa eliminata con successo", "success");

@@ -611,6 +611,9 @@ display: none !important;
   white-space: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 
@@ -624,6 +627,9 @@ display: none !important;
   margin-left: 0.2rem;
   text-align: right;
   scrollbar-width: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 .impColorUscita{
     color: lightcoral;
@@ -633,11 +639,17 @@ display: none !important;
 }
 .categoria{
     flex-basis: 65%;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 .data{
     flex-basis: 35%;
     text-align: right;
     margin-right: 0.2rem;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 .fullscreenBtnContainer {

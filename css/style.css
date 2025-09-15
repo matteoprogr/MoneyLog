@@ -516,6 +516,7 @@ display: none !important;
 
 .selected {
   color: #007aff;
+  border-color: #007aff;
 }
 
 .spesa-footer {
@@ -611,9 +612,9 @@ display: none !important;
   white-space: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 
@@ -627,9 +628,9 @@ display: none !important;
   margin-left: 0.2rem;
   text-align: right;
   scrollbar-width: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 .impColorUscita{
     color: lightcoral;

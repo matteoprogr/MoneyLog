@@ -436,7 +436,6 @@ function setDirezioneData(event,graph){
 }
 
 
-
 export function setDateRange(range = "#date-range", mese, anno) {
   let today = new Date();
   if(isValid(mese) && isValid(anno)){

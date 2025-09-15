@@ -38,19 +38,16 @@ export function creaSpesaComponent(trsn,tabActive) {
        container.innerHTML = `
          <div class="spesa-card">
 
-        <div class="spesa-content">
-             <div class="spesa-body ${bodyClass}">
-               <span class="descrizione">${trsn.descrizione}</span>
-               <span class="importo ${impClass}">${trsn.importo.toFixed(2)}</span>
+            <div class="spesa-content">
+                 <div class="spesa-body ${bodyClass}">
+                   <span class="descrizione">${trsn.descrizione}</span>
+                   <span class="importo ${impClass}">${trsn.importo.toFixed(2)}</span>
+                 </div>
+                 <div class="spesa-header">
+                   <small class="categoria">${trsn.categoria}</small>
+                   <small class="data">${formatDate(trsn.data)}</small>
+                 </div>
              </div>
-             <div class="spesa-header">
-               <small class="categoria">${trsn.categoria}</small>
-               <small class="data">${formatDate(trsn.data)}</small>
-             </div>
-         </div>
-          <div class="spesa-edit">
-                      <button class="spesa-btn ${btnClass}" type="button">✏️</button>
-                  </div>
          </div>
        `;
 
@@ -59,11 +56,18 @@ export function creaSpesaComponent(trsn,tabActive) {
            container.classList.toggle("selected");
          });
 
-         const editBtn = container.querySelector('.spesa-btn');
-         editBtn.addEventListener("click", (e) => {
-             e.stopPropagation();
-             overlayEdit(trsn);
-         });
+        let pressTimer;
+
+        container.addEventListener("touchstart", () => {
+          pressTimer = setTimeout(() => {
+            overlayEdit(trsn);
+          }, 600);
+        });
+
+        container.addEventListener("touchend", () => {
+          clearTimeout(pressTimer);
+        });
+
 
        return container;
      }
@@ -112,7 +116,7 @@ export function nessunaElementoComponent(tipo) {
                 <span class="rowExplain">➕   Crea una nuova ${tipo}</span>
                 <span class="rowExplain">🔍   Ricerca ${tipo}</span>
                 <span class="rowExplain">🗑️   Elimina ${tipo} selezionata</span>
-                <span class="rowExplain">✏️   Modifica ${tipo} </span>
+                <span class="rowExplain">👆   Tieni premuto per modificare </span>
              </div>
            `;
 
@@ -126,7 +130,7 @@ export function nessunaCategoriaComponent(tipo) {
              <div>
                 <span class="rowExplain">😢   Nessuna ${tipo} disponibile</span>
                 <span class="rowExplain">🗑️   Elimina ${tipo} selezionata</span>
-                <span class="rowExplain">✏️   Modifica ${tipo} </span>
+                <span class="rowExplain">👆   Tieni premuto per modificare</span>
              </div>
            `;
 
@@ -137,6 +141,7 @@ export function nessunaCategoriaComponent(tipo) {
 export function categoriaComponent(categoria) {
     const container = document.createElement("div");
     container.classList.add("cat");
+    let pressTimer;
 
     if(categoria === "Altro"){
         container.innerHTML = `
@@ -149,20 +154,12 @@ export function categoriaComponent(categoria) {
     container.innerHTML = `
       <div class="cat-header">
         <span class="cat-name">${categoria}</span>
-        <button class="catEdit-btn" type="button">✏️</button>
       </div>
     `;
 
-    container.addEventListener("click", () => {
-        container.classList.toggle("selected");
-    });
-
-    const editBtn = container.querySelector('.catEdit-btn');
     const span = container.querySelector('.cat-name');
-
-    editBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-
+    container.addEventListener("touchstart", () => {
+    pressTimer = setTimeout(() => {
         const input = document.createElement("input");
         input.type = "text";
         const oldValue = span.textContent.trim();
@@ -194,12 +191,20 @@ export function categoriaComponent(categoria) {
                 confirm();
             }
         });
-      });
-    }
+    }, 600);
+});
+
+    container.addEventListener("touchend", () => {
+        clearTimeout(pressTimer);
+    });
+}
+
+    container.addEventListener("click", () => {
+        container.classList.toggle("selected");
+    });
 
     return container;
 }
-
 
 
 export async function overlayAddSpesa() {
@@ -215,25 +220,25 @@ const data = document.getElementById('data');
 
 
 openBtn.addEventListener('click', async (e) => {
-        if (overlay.classList.contains('showOverlay')) {
-            overlay.classList.remove('showOverlay');
-            form.reset();
-        } else {
-            catRow.innerHTML = "";
-            overlay.classList.toggle("showOverlay");
-            const categorie = await getCategorie();
-            categorie.forEach(cat => {
-            const card = catOverlay(cat.categoria, "addSpesa", null);
-            catRow.appendChild(card);
-            data.value = new Date().toISOString().split("T")[0];
-            });
-        }
-         document.addEventListener('click', (event) => {
-            if (!overlay.classList.contains('showOverlay')) return;
-            if (event.target.closest('#spesaFormOverlay') || event.target.closest('#addSpesaBtn')) return;
-              overlay.classList.remove('showOverlay');
-              form.reset();
-          });
+    if (overlay.classList.contains('showOverlay')) {
+        overlay.classList.remove('showOverlay');
+        form.reset();
+    } else {
+        catRow.innerHTML = "";
+        overlay.classList.toggle("showOverlay");
+        const categorie = await getCategorie();
+        categorie.forEach(cat => {
+        const card = catOverlay(cat.categoria, "addSpesa", null);
+        catRow.appendChild(card);
+        data.value = new Date().toISOString().split("T")[0];
+        });
+    }
+     document.addEventListener('click', (event) => {
+        if (!overlay.classList.contains('showOverlay')) return;
+        if (event.target.closest('#spesaFormOverlay') || event.target.closest('#addSpesaBtn')) return;
+          overlay.classList.remove('showOverlay');
+          form.reset();
+      });
     });
     closeBtn.addEventListener('click',async () =>{
         overlay.classList.remove('showOverlay');
@@ -263,20 +268,20 @@ openBtn.addEventListener('click', async (e) => {
       };
 
 
-      try {
-        if(!tab){
-        await saveSpesa(transazione);
-        }else if(tab){
-        await saveEntrata(transazione);
-        }
+  try {
+    if(!tab){
+    await saveSpesa(transazione);
+    }else if(tab){
+    await saveEntrata(transazione);
+    }
 
-        overlay.classList.remove('showOverlay');
-        createCriteri();
-        form.reset();
-      } catch (err) {
-        showErrorToast("Errore durante il salvataggio", "error");
-      }
-    });
+    overlay.classList.remove('showOverlay');
+    createCriteri();
+    form.reset();
+  } catch (err) {
+    showErrorToast("Errore durante il salvataggio", "error");
+  }
+ });
 }
 
 export function recuperaTab(){
@@ -346,40 +351,40 @@ export async function overlayRicerca() {
   }
 
 function catOverlay(categoria, sezione, selectedCards) {
-        const container = document.createElement("div");
-        container.classList.add("card");
-        if(selectedCards != null){
-            for(const card of selectedCards){
-                if(card.innerText.trim() === categoria){
-                    container.classList.add("selected");
-                    }
-            }
+    const container = document.createElement("div");
+    container.classList.add("card");
+    if(selectedCards != null){
+        for(const card of selectedCards){
+            if(card.innerText.trim() === categoria){
+                container.classList.add("selected");
+                }
         }
+    }
 
-           container.innerHTML = `
-             <div>
-               <span> ${categoria} </span>
-             </div>
-           `;
+   container.innerHTML = `
+     <div>
+       <span> ${categoria} </span>
+     </div>
+   `;
 
-            container.addEventListener("click", () => {
-              const categoriaElement = container.querySelector("span");
-              container.classList.toggle("selected");
-              if(sezione === "getSpese"){
-                    createCriteri();
-              }else if(sezione === "addSpesa"){
-                    const categoria = document.getElementById('categoria');
-                    container.classList.toggle("selected");
-                    categoria.value = categoriaElement.innerText;
-              }else if(sezione === "editSpesa"){
-                    const categoria = document.getElementById('editCategoria');
-                    container.classList.toggle("selected");
-                    categoria.value = categoriaElement.innerText;
-              }
+    container.addEventListener("click", () => {
+      const categoriaElement = container.querySelector("span");
+      container.classList.toggle("selected");
+      if(sezione === "getSpese"){
+            createCriteri();
+      }else if(sezione === "addSpesa"){
+            const categoria = document.getElementById('categoria');
+            container.classList.toggle("selected");
+            categoria.value = categoriaElement.innerText;
+      }else if(sezione === "editSpesa"){
+            const categoria = document.getElementById('editCategoria');
+            container.classList.toggle("selected");
+            categoria.value = categoriaElement.innerText;
+      }
 
-            });
+    });
 
-        return container;
+    return container;
 }
 
 export async function overlayEdit(spesa) {

@@ -159,7 +159,7 @@ display: none !important;
 .btn {
     flex: 1 1 0;
     padding: 0.425rem;
-    margin-top: 0.275rem;
+    margin: 0.275rem;
     border-radius: 0.375rem;
     border: 0.0625rem solid #ccc;
     font-size: 0.675rem;
@@ -515,7 +515,6 @@ display: none !important;
 }
 
 .selected {
-  opacity: 0.6;
   color: #007aff;
 }
 
@@ -676,7 +675,6 @@ display: none !important;
 
 .fullscreenBtn:hover {
   transform: scale(1.08);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }
 
 .fullscreenBtn:active {

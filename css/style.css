@@ -545,6 +545,7 @@ display: none !important;
 
 .spesa-content{
     flex-basis: 100%;
+    max-width:100%
 }
 
 .spesa-body {

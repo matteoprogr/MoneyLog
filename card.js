@@ -164,6 +164,7 @@ export function categoriaComponent(categoria) {
         input.type = "text";
         const oldValue = span.textContent.trim();
         input.value = oldValue
+        input.maxLength = 25;
         input.classList.add("cat-input");
 
         span.replaceWith(input);

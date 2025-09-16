@@ -1,9 +1,9 @@
-const CACHE_NAME = 'moneylog-cache-v16';
+const CACHE_NAME = 'moneylog-cache-v17';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/styles.css?v=16',
-  '/main.js?v=16',
+  '/styles.css?v=17',
+  '/main.js?v=17',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
 ];

@@ -31,7 +31,9 @@ h2 {
     display: block;
     position: sticky;
 }
-
+.bodyBackground{
+    background: #f5f5f7;
+}
 
 .excel-container {
     display: flex;

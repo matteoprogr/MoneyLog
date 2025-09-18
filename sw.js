@@ -1,11 +1,16 @@
-const CACHE_NAME = 'moneylog-cache-v18';
+const CACHE_NAME = 'moneylog-cache-v19';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/styles.css?v=18',
-  '/main.js?v=18',
+  '/styles.css?v=19',
+  '/main.js?v=19',
   '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  '/icons/icon-512.png',
+  '/libs/dexie.mjs',
+  '/libs/echarts.min.js',
+  '/libs/flatpickr.min.css',
+  '/libs/flatpickr.js',
+  '/libs/flatpickr_it.js'
 ];
 
 self.addEventListener('install', event => {

@@ -1,4 +1,4 @@
-  import { Dexie } from 'https://unpkg.com/dexie/dist/modern/dexie.mjs';
+  import Dexie from './libs/dexie.mjs';
   import { showToast } from './main.js';
   import { showErrorToast } from './main.js';
   import { isValid } from './main.js';

@@ -198,11 +198,12 @@ export function categoriaComponent(categoria) {
     container.addEventListener("touchend", () => {
         clearTimeout(pressTimer);
     });
-}
+
 
     container.addEventListener("click", () => {
         container.classList.toggle("selected");
     });
+}
 
     return container;
 }

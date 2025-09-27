@@ -360,7 +360,6 @@ export async function updateCategoria(oldCat, newCat, richiesta, delTrns) {
     }catch(err){
         showErrorToast("Errore durante l'update","error")
     }
-
 }
 
 //////////////   UPDATE CATEGORIE IN TRANSAZIONI ////////////////////////

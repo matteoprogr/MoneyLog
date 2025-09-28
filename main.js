@@ -314,15 +314,30 @@ async function creaGraficoTorta(criteri){
 
 }
 
-let currentTotal =  0;
 function attachLegendHandler(chart) {
     chart.on('legendselectchanged', function (params) {
         const option = chart.getOption();
         const selected = params.selected;
         const data = option.series[0].data;
-        currentTotal = data.reduce((acc, item) => { return selected[item.name] ? acc + item.value : acc; }, 0);
-        option.series[0].label.formatter = () => `${currentTotal.toFixed(2)}`;
-        chart.setOption(option);
+        const newTotal = data.reduce((acc, item) => { return selected[item.name] ? acc + item.value : acc; }, 0);
+
+        chart.setOption({
+        series: [{
+          label: {
+           formatter: () => `${newTotal.toFixed(2)}`
+          }
+         }]
+        });
+
+        chart.setOption ({
+         tooltip: {
+          ...option.tooltip[0],
+          formatter: function(p){
+           return `${p.name}: ${Number(p.value).toFixed(2)} <br>
+                   % sul totale: ${(p.value /newTotal * 100).toFixed(2)}`;
+          }
+         }
+        }, false, true);
     });
 }
 
@@ -340,15 +355,14 @@ async function createOption(trns, trnsType){
   });
 
   const data = Object.entries(aggregato).map(([name, value]) => ({ name, value }));
-  const totale = data.reduce((acc, item) => acc + item.value, 0);
-  currentTotal = totale;
+  let totale = data.reduce((acc, item) => acc + item.value, 0);
 
     const option = {
       tooltip: {
         trigger: 'item',
         formatter: function (params) {
               return `${params.name}: ${Number(params.value).toFixed(2)} <br>
-                      % sul totale: ${(Number(params.value)/ currentTotal * 100).toFixed(2)} `;
+                      % sul totale: ${(Number(params.value)/ totale * 100).toFixed(2)} `;
             }
       },
       legend: {

@@ -256,7 +256,7 @@ const colorBilancio = totB >= 0 ? '#4caf50' : '#ff5252';
 
 const option = {
   title: {
-    text: `Bilancio annuale:   ${totB}`,
+    text: `Bilancio annuale:   ${totB.toFixed(2)}`,
     left: 'center',
     top: 50,
     textStyle: {

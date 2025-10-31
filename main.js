@@ -226,6 +226,14 @@ function sommaPerMese(transazioni) {
   return somme;
 }
 
+function sommaAnnua(transazioni){
+    let somma = 0;
+    transazioni.forEach(item => {
+        somma += Math.abs(Number(item.importo)) || 0;
+    });
+    return somma;
+}
+
 async function creaGraficoBar(){
 const echarts = window.echarts;
 const chart = echarts.init(document.getElementById('chart'));
@@ -241,7 +249,21 @@ const entrate = await queryTrns(criteri,true);
 const sumS = sommaPerMese(spese);
 const sumE = sommaPerMese(entrate);
 
+const totS = sommaAnnua(spese);
+const totE = sommaAnnua(entrate);
+const totB = totE - totS;
+const colorBilancio = totB >= 0 ? '#4caf50' : '#ff5252';
+
 const option = {
+  title: {
+    text: `Bilancio annuale:   ${totB}`,
+    left: 'center',
+    top: 50,
+    textStyle: {
+      fontSize: 12,
+      color: colorBilancio
+    }
+  },
   tooltip: {
     trigger: 'axis',
     valueFormatter: function (val) {
@@ -251,20 +273,20 @@ const option = {
   legend: {},
   dataset: {
     source: [
-      ['gennaio', sumS[0], sumE[0] ],
-      ['febbraio', sumS[1], sumE[1] ],
-      ['marzo', sumS[2], sumE[2] ],
-      ['aprile', sumS[3], sumE[3] ],
-      ['maggio', sumS[4], sumE[4] ],
-      ['giugno', sumS[5], sumE[5] ],
-      ['luglio', sumS[6], sumE[6] ],
-      ['agosto', sumS[7], sumE[7] ],
-      ['settembre', sumS[8], sumE[8] ],
-      ['ottobre', sumS[9], sumE[9] ],
-      ['novembre', sumS[10], sumE[10] ],
-      ['dicembre', sumS[11], sumE[11] ]
+      ['gennaio', sumS[0], sumE[0], sumE[0] - sumS[0] ],
+      ['febbraio', sumS[1], sumE[1], sumE[1] - sumS[1] ],
+      ['marzo', sumS[2], sumE[2], sumE[2] - sumS[2] ],
+      ['aprile', sumS[3], sumE[3], sumE[3] - sumS[3] ],
+      ['maggio', sumS[4], sumE[4], sumE[4] - sumS[4] ],
+      ['giugno', sumS[5], sumE[5], sumE[5] - sumS[5] ],
+      ['luglio', sumS[6], sumE[6], sumE[6] - sumS[6] ],
+      ['agosto', sumS[7], sumE[7], sumE[7] - sumS[7] ],
+      ['settembre', sumS[8], sumE[8], sumE[8] - sumS[8] ],
+      ['ottobre', sumS[9], sumE[9], sumE[9] - sumS[9] ],
+      ['novembre', sumS[10], sumE[10], sumE[10] - sumS[10] ],
+      ['dicembre', sumS[11], sumE[11], sumE[11] - sumS[11] ]
     ],
-    dimensions: ['Mese','Uscite','Entrate']
+    dimensions: ['Mese','Uscite','Entrate', 'Bilancio']
   },
   xAxis: {
     type: 'category',
@@ -286,6 +308,12 @@ const option = {
       name: 'Uscite',
       encode: { x: 'Mese', y: 'Uscite' },
       itemStyle: { color: '#ff5252' }
+    },
+    {
+      type: 'bar',
+      name: 'Bilancio',
+      encode: { x: 'Mese', y: 'Bilancio' },
+      tooltip: { show: true }
     }
   ]
 };

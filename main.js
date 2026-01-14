@@ -64,7 +64,6 @@ document.getElementById('btnSync').addEventListener('click', syncDati);
 
 let targetId;
 let picker;
-let currentUser = null;
 
 // SUBMIT FORM  e SECTIONS //////////////////////////////////////////
 

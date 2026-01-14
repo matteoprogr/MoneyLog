@@ -16,23 +16,8 @@ initSupabaseClient();
 // Metodo per inserimento Spese in supabase
 // Utilizzato id user presente in supabase nel salvattaggio della uscita
 // In caso di errore viene eseguito il log dell'errore e notificato all'utente tramite toast
-export async function insertTrs(trs, supaTable, userId){
+export async function insertTrs(trs, supaTable){
     try{
-
-        const dataToInsert = {
-            categoria: trs.categoria,
-            data: trs.data,
-            dataInserimento: trs.dataInserimento,
-            importo: trs.importo,
-            descrizione: trs.descrizione,
-            user: userId
-        };
-            console.log('Dati da inserire:', dataToInsert);
-            console.log('userId type:', typeof userId);
-            console.log('userId value:', userId);
-
-
-
         const { data, error } =
         await supabaseClient
             .from(supaTable)
@@ -42,7 +27,6 @@ export async function insertTrs(trs, supaTable, userId){
                 dataInserimento: trs.dataInserimento,
                 importo: trs.importo,
                 descrizione: trs.descrizione,
-                user: userId
             });
         if(error) {
             console.log("Errore nel salvataggio", error);

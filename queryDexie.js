@@ -55,7 +55,7 @@ export async function saveSpesa(spesa) {
     const id = await db.spese.add(data);
 
      const user = await getUser();
-     if(isValid(user)) insertTrs(data, 'uscite', user.id);
+     if(isValid(user)) insertTrs(data, 'uscite');
 
     return { success: true, id };
   } catch (error) {
@@ -84,7 +84,7 @@ export async function saveEntrata(entrata) {
     const id = await db.entrate.add(data);
 
     const user = await getUser();
-    if(isValid(user)) insertTrs(data, 'entrate', user.id);
+    if(isValid(user)) insertTrs(data, 'entrate');
     showToast("entrata aggiunta con successo", "success");
 
     return { success: true, id };

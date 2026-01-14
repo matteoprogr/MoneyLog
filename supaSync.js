@@ -126,7 +126,7 @@ export async function syncDati() {
 async function syncCollection({ tableName, collectionName }) {
 
   // Recupero dati
-  const localRecords = await queryTrns(null, collectionName);
+  const localRecords = await queryTrns({}, collectionName);
   const { data: remoteRecords, error } = await supabaseClient
     .from(tableName)
     .select('*')

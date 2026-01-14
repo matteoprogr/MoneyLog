@@ -18,6 +18,21 @@ initSupabaseClient();
 // In caso di errore viene eseguito il log dell'errore e notificato all'utente tramite toast
 export async function insertTrs(trs, supaTable, userId){
     try{
+
+        const dataToInsert = {
+            categoria: trs.categoria,
+            data: trs.data,
+            dataInserimento: trs.dataInserimento,
+            importo: trs.importo,
+            descrizione: trs.descrizione,
+            user: userId
+        };
+            console.log('Dati da inserire:', dataToInsert);
+            console.log('userId type:', typeof userId);
+            console.log('userId value:', userId);
+
+
+
         const { data, error } =
         await supabaseClient
             .from(supaTable)
@@ -31,6 +46,7 @@ export async function insertTrs(trs, supaTable, userId){
             });
         if(error) {
             console.log("Errore nel salvataggio", error);
+            console.log("Dati che hanno causato l'errore:", dataToInsert);
         }
     }catch(error){
         console.error(error);

@@ -986,7 +986,7 @@ export async function checkAuth(){
 async function loginWithGoogle() {
   const { data, error } = await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
-    option: {
+    options: {
      redirectTo: 'https://matteoprogr.github.io/MoneyLog/'
     }
   });

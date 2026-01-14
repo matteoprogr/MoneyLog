@@ -8,6 +8,10 @@ async function initSupabaseClient(){
 supabaseClient = await getSupaClient();
 }
 
+document.addEventListener("DOMContentLoaded", () => {
+initSupabaseClient();
+})
+
 
 // Metodo per inserimento Spese in supabase
 // Utilizzato id user presente in supabase nel salvattaggio della uscita

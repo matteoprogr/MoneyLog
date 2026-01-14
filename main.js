@@ -1005,7 +1005,7 @@ async function logout() {
 export async function getUser(){
     try{
         if(isValid(currentUser) && isValid(currentUser.id)) {
-            return currentUser.id;
+            return currentUser;
         }else{
             const user = await checkAuth();
             if(isValid(user) && isValid(user.id)) {

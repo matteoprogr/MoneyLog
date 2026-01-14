@@ -133,13 +133,34 @@ async function syncCollection({ tableName, collectionName, bol }) {
 
   if (error) throw error
 
+    // Normalizzazione locale
+    const normalizedLocal = localRecords.map(r => ({
+        dataInserimento: normalizeTimestamp(r.dataInserimento),
+        dataModifica: normalizeTimestamp(r.dataModifica),
+        importo: r.importo,
+        categoria: r.categoria,
+        descrizione: r.descrizione,
+        data: r.data
+    }));
+
+    // Normalizzazione remoto
+    const normalizedRemote = remoteRecords.map(r => ({
+        dataInserimento: normalizeTimestamp(r.dataInserimento),
+        dataModifica: normalizeTimestamp(r.dataModifica),
+        importo: r.importo,
+        categoria: r.categoria,
+        descrizione: r.descrizione,
+        data: r.data
+    }));
+
+
   // Indicizzazione per dataInserimento
   const localMap = new Map(
-    localRecords.map(r => [r.dataInserimento, r])
+    normalizedLocal.map(r => [r.dataInserimento, r])
   )
 
   const remoteMap = new Map(
-    remoteRecords.map(r => [r.dataInserimento, r])
+    normalizedRemote.map(r => [r.dataInserimento, r])
   )
 
   // Locale → Remoto
@@ -181,4 +202,9 @@ async function checkDeleted(){
     }catch(error){
         console.log(error);
     }
+}
+
+function normalizeTimestamp(ts) {
+  if (!ts) return null;
+  return new Date(ts).toISOString();
 }

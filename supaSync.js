@@ -110,13 +110,15 @@ export async function syncDati() {
   // ENTRATE
   await syncCollection({
     tableName: 'entrate',
-    collectionName: 'entrate'
+    collectionName: 'entrate',
+    bol: true
   })
 
   // USCITE
   await syncCollection({
     tableName: 'uscite',
-    collectionName: 'spese'
+    collectionName: 'spese',
+    bol: false
   })
 }
 
@@ -124,7 +126,7 @@ export async function syncDati() {
 async function syncCollection({ tableName, collectionName }) {
 
   // Recupero dati
-  const localRecords = await queryTrns(collectionName);
+  const localRecords = await queryTrns(null, collectionName);
   const { data: remoteRecords, error } = await supabaseClient
     .from(tableName)
     .select('*')

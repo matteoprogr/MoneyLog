@@ -1,7 +1,7 @@
   import Dexie from './libs/dexie.mjs';
-  import { showToast } from './main.js';
-  import { showErrorToast } from './main.js';
-  import { isValid } from './main.js';
+
+  import { isValid, getUser, showErrorToast, showToast } from './main.js';
+  import { insertTrs } from './supaSync.js';
 
 
 let db;
@@ -54,6 +54,9 @@ export async function saveSpesa(spesa) {
     await saveCategoria(spesa.categoria);
     const id = await db.spese.add(data);
 
+     const user = await getUser();
+     if(isValid(user)) insertTrs(data, 'uscite', user.id);
+
     return { success: true, id };
   } catch (error) {
     console.error("Errore nel salvataggio uscita:", error);
@@ -79,6 +82,9 @@ export async function saveEntrata(entrata) {
 
     await saveCategoria(entrata.categoria);
     const id = await db.entrate.add(data);
+
+    const user = await getUser();
+    if(isValid(user)) insertTrs(data, 'entrate', user.id);
     showToast("entrata aggiunta con successo", "success");
 
     return { success: true, id };

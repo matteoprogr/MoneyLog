@@ -273,13 +273,10 @@ openBtn.addEventListener('click', async (e) => {
 
 
   try {
-    const user = await getUser();
     if(!tab){
         await saveSpesa(transazione);
-        if(isValid(user)) insertTrs(transazione, 'uscite', user.id);
     }else if(tab){
         await saveEntrata(transazione);
-        if(isValid(user)) insertTrs(transazione, 'entrate', user.id);
     }
 
     overlay.classList.remove('showOverlay');

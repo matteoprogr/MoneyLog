@@ -64,6 +64,7 @@ document.getElementById('btnSync').addEventListener('click', syncDati);
 
 let targetId;
 let picker;
+let currentUser = null;
 
 // SUBMIT FORM  e SECTIONS //////////////////////////////////////////
 
@@ -999,4 +1000,24 @@ async function logout() {
   if (error) {
     console.error('Errore logout:', error.message)
   }
+  currentUser = null;
+}
+
+export async function getUser(){
+    try{
+        if(isValid(currentUser) && isValid(currentUser.id)) {
+            return currentUser.id;
+        }else{
+            const user = await checkAuth();
+            if(isValid(user) && isValid(user.id)) {
+                currentUser = user;
+            }else{
+                throw new Error("Utente non autenticato");
+            }
+        }
+        return currentUser;
+    }catch(error){
+        console.log("Errore durante recupero user", error);
+        throw error;
+    }
 }

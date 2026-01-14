@@ -1,7 +1,7 @@
-  import Dexie from './libs/dexie.mjs';
+import Dexie from './libs/dexie.mjs';
 
-  import { isValid, getUser, showErrorToast, showToast } from './main.js';
-  import { insertTrs } from './supaSync.js';
+import { isValid, getUser, showErrorToast, showToast } from './main.js';
+import { insertTrs } from './supaSync.js';
 
 
 let db;
@@ -16,7 +16,8 @@ export function initDB() {
       spese: '++id, *categoria, importo, data, [importo+data], [data+importo]',
       categorie: '&categoria',
       entrate: '++id, *categoria, importo, data, [importo+data], [data+importo]',
-      defaultCat: 'inizializato'
+      defaultCat: 'inizializato',
+      deletedTrs: '++id'
     });
 
     initCategorie();
@@ -54,14 +55,33 @@ export async function saveSpesa(spesa) {
     await saveCategoria(spesa.categoria);
     const id = await db.spese.add(data);
 
-     const user = await getUser();
-     if(isValid(user)) insertTrs(data, 'uscite');
+    const user = await getUser();
+    if(isValid(user)) insertTrs(data, 'uscite');
+    showToast("uscita aggiunta con successo", "success");
 
     return { success: true, id };
   } catch (error) {
     console.error("Errore nel salvataggio uscita:", error);
     return { success: false, error };
   }
+}
+
+export async function saveLocalDb(trs, crud, collection){
+    initDB();
+    if(crud === "add" && collection === "spese") await db.spese.add(trs);
+    if(crud === "put"&& collection === "spese") await db.spese.put(trs);
+    if(crud === "add" && collection === "entrate") await db.entrate.add(trs);
+    if(crud === "put"&& collection === "entrate") await db.entrate.put(trs);
+}
+
+export async function getDeleted(){
+    initDB();
+    return await db.deletedTrs.toArray();
+}
+
+export async function deletedCheckedDeleted(){
+    initDB();
+    return await db.deletedTrs.clear();
 }
 
 
@@ -259,7 +279,7 @@ export async function queryTrns(criteri = {}, tabActive) {
 }
 
 
-////////////////    ELIMINAZIONE TRANSAZIONI ////////////////////////////////
+////////////////  ELIMINAZIONE TRANSAZIONI ////////////////////////////////
 export async function deleteSpese(criteri = {}, tabActive) {
 
     let collezione;
@@ -270,8 +290,16 @@ export async function deleteSpese(criteri = {}, tabActive) {
     }
 
     if (Array.isArray(criteri) && criteri.length > 0) {
+
+        const deletedTransaction = await collezione.filter(trns => criteri.includes(trns.dataInserimento)).toArray();
+
+        await db.deletedTrs.bulkAdd(
+            deletedTransaction.map(trns => ({
+                dataInserimento: trns.dataInserimento
+            }))
+        );
+
         await  collezione.filter(trns => criteri.includes(trns.dataInserimento)).delete();
-        return;
     }
 }
 //////////// DELETE CATEGORIE /////////////////

@@ -1,4 +1,5 @@
 import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
+import { queryTrns, saveLocalDb, getDeleted, deletedCheckedDeleted } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -26,11 +27,34 @@ export async function insertTrs(trs, supaTable){
                 data: trs.data,
                 dataInserimento: trs.dataInserimento,
                 importo: trs.importo,
-                descrizione: trs.descrizione,
+                descrizione: trs.descrizione
             });
         if(error) {
             console.log("Errore nel salvataggio", error);
-            console.log("Dati che hanno causato l'errore:", dataToInsert);
+        }
+        if(data){
+
+        }
+    }catch(error){
+        console.error(error);
+    }
+
+}
+
+export async function updateTrs(trs, supaTable){
+    try{
+        const { data, error } =
+        await supabaseClient
+            .from(supaTable)
+            .update({
+                categoria: trs.categoria,
+                data: trs.data,
+                dataInserimento: trs.dataInserimento,
+                importo: trs.importo,
+                descrizione: trs.descrizione
+            }).eq('id', trs.id);
+        if(error) {
+            console.log("Errore nel salvataggio", error);
         }
     }catch(error){
         console.error(error);
@@ -39,28 +63,120 @@ export async function insertTrs(trs, supaTable){
 }
 
 
-// Metodo per recupero dell'id dell'user
-// Se variabile curretuser non valorizzata, l'id viene recuparato da supabase
-// In caso di errore viene eseguito log dell'errore
-//export async function getUserId(){
-//    try{
-//        initSupabaseClient();
-//        const user = await checkAuth();
-//        if(isValid(currentUser)) return currentUser.id;
-//        //supabaseClient.auth.getSession();
-//        const { data: { user } } = await supabaseClient.auth.getUser();
-//        if(isValid(user)) {
-//            return user.id;
-//        }
-//        else{
-//            throw new Error("Utente non autenticato");
-//        }
-//    }catch(error){
-//        console.log("Errore durante recupero user", error);
-//        throw error;
-//    }
-//}
+export async function deleteTrs(dataInserimento, supaTable){
+    try{
+        const { data, error } =
+        await supabaseClient
+            .from(supaTable)
+            .delete()
+            .eq('dataInserimento', dataInserimento);
+        if(error) {
+            console.log("Errore nel salvataggio", error);
+        }
+    }catch(error){
+        console.error(error);
+    }
+}
 
-export async function syncDati(){
+export async function getTrs(trs, supaTable){
+    try{
+        const { data, error } =
+        await supabaseClient
+            .from(supaTable)
+            .select()
+        if(error) {
+            console.log("Errore nel salvataggio", error);
+        }
+    }catch(error){
+        console.error(error);
+    }
+}
 
+/*
+| Caso                              | Azione                     |
+| --------------------------------- | -------------------------- |
+| Esiste solo in IndexedDB          | ➜ INSERT in Supabase       |
+| Esiste solo in Supabase           | ➜ INSERT in IndexedDB      |
+| Esiste in entrambi                | ➜ confronta `dataModifica` |
+| `dataModifica` Indexed > Supabase | ➜ UPDATE Supabase          |
+| `dataModifica` Supabase > Indexed | ➜ UPDATE IndexedDB         |
+| Uguali                            | ➜ niente                   |
+*/
+
+export async function syncDati() {
+  // Elimina in supabase le transazioni eliminate in locale
+  await checkDeleted();
+
+  // ENTRATE
+  await syncCollection({
+    tableName: 'entrate',
+    collectionName: 'entrate'
+  })
+
+  // USCITE
+  await syncCollection({
+    tableName: 'uscite',
+    collectionName: 'spese'
+  })
+}
+
+
+async function syncCollection({ tableName, collectionName }) {
+
+  // Recupero dati
+  const localRecords = await queryTrns(collectionName);
+  const { data: remoteRecords, error } = await supabaseClient
+    .from(tableName)
+    .select('*')
+
+  if (error) throw error
+
+  // Indicizzazione per dataInserimento
+  const localMap = new Map(
+    localRecords.map(r => [r.dataInserimento, r])
+  )
+
+  const remoteMap = new Map(
+    remoteRecords.map(r => [r.dataInserimento, r])
+  )
+
+  // Locale → Remoto
+  for (const [key, local] of localMap) {
+    const remote = remoteMap.get(key);
+
+    if (!remote) {
+      await supabaseClient.from(tableName).insert(local);
+    }
+    else if (new Date(local.dataModifica) > new Date(remote.dataModifica)) {
+      await supabaseClient
+        .from(tableName)
+        .update(local)
+        .eq('dataInserimento', key)
+    }
+  }
+
+  //  Remoto → Locale
+  for (const [key, remote] of remoteMap) {
+    const local = localMap.get(key);
+
+    if (!local) {
+      await saveLocalDb(remote, "add", collectionName);
+    }
+    else if (new Date(remote.dataModifica) > new Date(local.dataModifica)) {
+       await saveLocalDb(remote, "put", collectionName);
+    }
+  }
+}
+
+async function checkDeleted(){
+    try{
+        const dels = await getDeleted();
+        for(const dataIn of  dels){
+            await deleteTrs(dataIn);
+        }
+
+        await deletedCheckedDeleted();
+    }catch(error){
+        console.log(error);
+    }
 }

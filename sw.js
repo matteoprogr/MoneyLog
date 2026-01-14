@@ -1,11 +1,10 @@
-const CACHE_NAME = 'moneylog-cache-v24';
+const CACHE_NAME = 'moneylog-cache-v25';
 const urlsToCache = [
   '/',
   '/index.html',
   '/styles.css?v=24',
   '/main.js?v=24',
   '/icons/icon-192.png',
-  '/icons/icon-512.png',
   '/libs/dexie.mjs',
   '/libs/echarts.min.js',
   '/libs/flatpickr.min.css',

@@ -1,0 +1,62 @@
+import { isValid, showToast, getSupaClient } from './main.js'
+
+// variabile globale client supabase
+let supabaseClient = null;
+
+
+async function initSupabaseClient(){
+supabaseClient = await getSupaClient();
+}
+
+
+// Metodo per inserimento Spese in supabase
+// Utilizzato id user presente in supabase nel salvattaggio della uscita
+// In caso di errore viene eseguito il log dell'errore e notificato all'utetne tramite toast
+export async function insertTrs(trs, supaTable){
+    try{
+        const userId = await getUserId();
+        const { data, error } =
+        await supabaseClient
+            .from(supaTable)
+            .insert({
+                categoria: trs.categoria,
+                data: trs.data,
+                dataInserimento: trs.dataInserimento,
+                importo: trs.importo,
+                descrizione: trs.descrizione,
+                user: userId
+            });
+        if(error) {
+            console.log("Errore nel salvataggio", error);
+        }
+    }catch(error){
+        console.error(error);
+    }
+
+}
+
+
+// Metodo per recupero dell'id dell'user
+// Se variabile curretuser non valorizzata, l'id viene recuparato da supabase
+// In caso di errore viene eseguito log dell'errore
+export async function getUserId(){
+    try{
+        initSupabaseClient();
+        if(isValid(currentUser)) return currentUser.id;
+        //supabaseClient.auth.getSession();
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if(isValid(user)) {
+            return user.id;
+        }
+        else{
+            throw new Error("Utente non autenticato");
+        }
+    }catch(error){
+        console.log("Errore durante recupero user", error);
+        throw error;
+    }
+}
+
+export async function syncDati(){
+
+}

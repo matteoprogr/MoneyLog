@@ -9,6 +9,8 @@ import { getCategorie } from './queryDexie.js';
 import { getCategorieArray } from './queryDexie.js';
 import { updateCategoria } from './queryDexie.js';
 import { categorieCreateComponent } from './main.js';
+import { checkAuth } from './main.js';
+import { insertTrs } from './supaSync.js';
 
 export function creaSpesaComponent(trsn,tabActive) {
 
@@ -271,10 +273,13 @@ openBtn.addEventListener('click', async (e) => {
 
 
   try {
+    const isAuth = await checkAuth();
     if(!tab){
-    await saveSpesa(transazione);
+        await saveSpesa(transazione);
+        if(isValid(isAuth)) insertTrs(transazione, 'uscite');
     }else if(tab){
-    await saveEntrata(transazione);
+        await saveEntrata(transazione);
+        if(isValid(isAuth)) insertTrs(transazione, 'entrate');
     }
 
     overlay.classList.remove('showOverlay');

@@ -35,6 +35,7 @@
         <a href="#" data-target="gestisci-dati">Gestione Dati</a>
         <a href="#" data-target="categorie-section">Categorie</a>
         <a href="#" data-target="info">Info</a>
+        <a href="#" data-target="account">Account</a>
     </div>
 </nav>
 
@@ -189,6 +190,11 @@
     </div>
 
     <div class="btn">
+        <h3>Sincronizza dati</h3>
+        <button id="btnSync">Sincronizza</button>
+    </div>
+
+    <div class="btn">
         <h3>Cancella tutti i dati</h3>
         <button id="btnDeleteData">Cancella tutto</button>
     </div>
@@ -246,6 +252,27 @@
     </div>
 </section>
 
+
+<!-- Pagina Account //////////////////////////////////////////////////////////////-->
+<section id="account" class="page-section">
+    <div class="sticky-bar bodyBackground">
+        <h2>Account</h2>
+    </div>
+    <div class="login-section">
+        <button id="sign-in">Accedi con google</button>
+    </div>
+
+    <div class="user-section">
+        <p id="labelUser"></p>
+    </div>
+
+    <div class="logout-section">
+        <button id="sign-out">Logout</button>
+    </div>
+    <div class="sync-section">
+
+    </div>
+</section>
 
 <script type="module" src="main.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>

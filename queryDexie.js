@@ -13,9 +13,9 @@ export function initDB() {
   if (!db) {
     db = new Dexie('MoneyLogDB');
     db.version(1).stores({
-      spese: '++id, *categoria, importo, data, [importo+data], [data+importo]',
+      spese: '++id, *categoria, importo, data, [importo+data], [data+importo], dataInserimento',
       categorie: '&categoria',
-      entrate: '++id, *categoria, importo, data, [importo+data], [data+importo]',
+      entrate: '++id, *categoria, importo, data, [importo+data], [data+importo], dataInserimento',
       defaultCat: 'inizializato',
       deletedTrs: '++id'
     });

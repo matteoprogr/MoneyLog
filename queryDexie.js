@@ -133,7 +133,7 @@ export async function saveCategoria(categoria) {
     if(!isValid(cat)){
     await db.categorie.add({
         categoria: categoriaCapitalized,
-        richieste: 1
+        richieste: 0
          });
     }else{
         updateCategoria(categoria, null, true, false);

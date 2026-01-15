@@ -283,6 +283,19 @@ export async function queryTrns(criteri = {}, tabActive) {
 }
 
 
+export async function getTrsByDataIns(collectionName, dataInserimento) {
+  const collection = db[collectionName];
+  if (!collection) throw new Error(`Collection ${collectionName} non trovata`);
+
+  const transaction = await collection
+    .where('dataInserimento')
+    .equals(dataInserimento)
+    .first();
+
+  return transaction || null;
+}
+
+
 ////////////////  ELIMINAZIONE TRANSAZIONI ////////////////////////////////
 export async function deleteSpese(criteri = {}, tabActive) {
 

@@ -1,5 +1,5 @@
 import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
-import { queryTrns, saveLocalDb, getDeleted, deleteCheckedDeleted } from './queryDexie.js'
+import { queryTrns, saveLocalDb, getDeleted, deleteCheckedDeleted, getTrsByDataIns } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -187,7 +187,8 @@ async function syncCollection({ tableName, collectionName, bol }) {
       await saveLocalDb(remote, "add", collectionName);
     }
     else if (effectiveDate(remote) > effectiveDate(local)) {
-       const remoteId = {...remote, id: local.id };
+       const localTrs = await getTrsByDataIns(collectionName, key);
+       const remoteId = {...remote, id: localTrs.id };
        await saveLocalDb(remoteId, "put", collectionName);
     }
   }

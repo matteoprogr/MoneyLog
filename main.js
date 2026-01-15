@@ -995,9 +995,9 @@ async function loginWithGoogle() {
 }
 
 async function showUserSection(data){
-  const loginSection = document.querySelector('login-section');
-  const userSection = document.querySelector('user-section');
-  const logoutSection = document.querySelector('logout-section');
+  const loginSection = document.querySelector('.login-section');
+  const userSection = document.querySelector('.user-section');
+  const logoutSection = document.querySelector('.logout-section');
   if (data){
     loginSection.classList.add("hidden");
     userSection.classList.remove("hidden");

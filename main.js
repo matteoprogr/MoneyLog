@@ -973,10 +973,10 @@ export async function checkAuth(){
         if(session && session.user){
             console.log("✅ Utente autenticato:", session.user.email);
             currentUser = session.user;
-            showUserSection(session.user.email);
+            showUserSection(true);
             return currentUser;
         }else{
-            showUserSection(null);
+            showUserSection(false);
             return null;
         }
     }catch(error){
@@ -995,20 +995,15 @@ async function loginWithGoogle() {
   if (error) console.error('Login error:', error);
 }
 
-async function showUserSection(mail){
+async function showUserSection(isAuth){
     const loginSection = document.querySelector('.login-section');
     const userSection = document.querySelector('.user-section');
     const logoutSection = document.querySelector('.logout-section');
-    if(isValid(mail)){
+    if(isAuth){
         loginSection.classList.add("hidden");
-        userSection.classList.remove("hidden");
         logoutSection.classList.remove("hidden");
-
-        const userMail = userSection.querySelector(".user");
-        userMail.textContent = `Benvenuto ${mail}`;
     }else{
         loginSection.classList.remove("hidden");
-        userSection.classList.add("hidden");
         logoutSection.classList.add("hidden");
     }
 }

@@ -1126,3 +1126,7 @@ display: none !important;
 .hidden{
     display: none;
 }
+
+.labelUser{
+    font-weight: 550;
+}

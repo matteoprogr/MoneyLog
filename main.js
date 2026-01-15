@@ -976,6 +976,7 @@ export async function checkAuth(){
             showUserSection(session.user.email);
             return currentUser;
         }else{
+            showUserSection(null);
             return null;
         }
     }catch(error){

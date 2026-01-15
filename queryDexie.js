@@ -1,7 +1,7 @@
 import Dexie from './libs/dexie.mjs';
 
 import { isValid, getUser, showErrorToast, showToast } from './main.js';
-import { insertTrs } from './supaSync.js';
+import { insertTrs, deleteTrs, updateTrs } from './supaSync.js';
 
 
 let db;
@@ -79,7 +79,7 @@ export async function getDeleted(){
     return await db.deletedTrs.toArray();
 }
 
-export async function deletedCheckedDeleted(){
+export async function deleteCheckedDeleted(){
     initDB();
     return await db.deletedTrs.clear();
 }
@@ -177,6 +177,8 @@ export async function updateSpesa( spesa, isNew) {
     }
 
     const id = await db.spese.put(data);
+    const user = await getUser();
+    if(isValid(user)) updateTrs(data, 'uscite');
 
     showToast("Uscita sostituita con successo", "success");
     return { success: true, id };
@@ -213,6 +215,8 @@ export async function updateEntrata(entrata, isNew) {
     }
 
     const id = await db.entrate.put(data);
+    const user = await getUser();
+    if(isValid(user)) updateTrs(data, 'entrate');
     showToast("Entrata sostituita con successo", "success");
     return { success: true, id };
 
@@ -283,10 +287,13 @@ export async function queryTrns(criteri = {}, tabActive) {
 export async function deleteSpese(criteri = {}, tabActive) {
 
     let collezione;
+    let tableName;
     if(!tabActive){
         collezione = db.spese.toCollection();
+        tableName = "uscite";
     }else if(tabActive){
         collezione = db.entrate.toCollection();
+        tableName = "entrate";
     }
 
     if (Array.isArray(criteri) && criteri.length > 0) {
@@ -300,8 +307,16 @@ export async function deleteSpese(criteri = {}, tabActive) {
         );
 
         await  collezione.filter(trns => criteri.includes(trns.dataInserimento)).delete();
+
+        const user = await getUser();
+        if(isValid(user)){
+            for(const date of criteri){
+                await deleteTrs(date,tableName);
+            }
+        }
     }
 }
+
 //////////// DELETE CATEGORIE /////////////////
 export async function deleteCategorie(criteri = []) {
     if (Array.isArray(criteri) && criteri.length > 0) {

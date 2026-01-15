@@ -977,6 +977,7 @@ export async function checkAuth(){
         }else{
             return null;
         }
+        showUserSection(data);
     }catch(error){
     console.error("Errore durante checkAuth",error);
     }
@@ -991,6 +992,18 @@ async function loginWithGoogle() {
     }
   });
   if (error) console.error('Login error:', error);
+  showUserSection(data);
+}
+
+async function showUserSection(data){
+  const loginSection = document.querySelector('login-section');
+  const userSection = document.querySelector('user-section');
+  const logoutSection = document.querySelector('logout-section');
+  if (data){
+    loginSection.classList.add("hidden");
+    userSection.classList.remove("hidden");
+    logoutSection.classList.remove("hidden");
+  }
 }
 
 // Metodo di logout

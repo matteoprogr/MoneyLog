@@ -1,5 +1,5 @@
 import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
-import { queryTrns, saveLocalDb, getDeleted, deletedCheckedDeleted } from './queryDexie.js'
+import { queryTrns, saveLocalDb, getDeleted, deleteCheckedDeleted } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -50,16 +50,16 @@ export async function updateTrs(trs, supaTable){
                 categoria: trs.categoria,
                 data: trs.data,
                 dataInserimento: trs.dataInserimento,
+                dataModifica: trs.dataModifica,
                 importo: trs.importo,
                 descrizione: trs.descrizione
-            }).eq('id', trs.id);
+            }).eq('dataInserimento', trs.dataInserimento);
         if(error) {
             console.log("Errore nel salvataggio", error);
         }
     }catch(error){
         console.error(error);
     }
-
 }
 
 
@@ -105,7 +105,8 @@ export async function getTrs(trs, supaTable){
 
 export async function syncDati() {
   // Elimina in supabase le transazioni eliminate in locale
-  await checkDeleted();
+  await checkDeleted("entrate");
+  await checkDeleted("uscite");
 
   // ENTRATE
   await syncCollection({
@@ -170,7 +171,7 @@ async function syncCollection({ tableName, collectionName, bol }) {
     if (!remote) {
       await supabaseClient.from(tableName).insert(local);
     }
-    else if (new Date(local.dataModifica) > new Date(remote.dataModifica)) {
+    else if (effectiveDate(local) > effectiveDate(remote)) {
       await supabaseClient
         .from(tableName)
         .update(local)
@@ -185,20 +186,20 @@ async function syncCollection({ tableName, collectionName, bol }) {
     if (!local) {
       await saveLocalDb(remote, "add", collectionName);
     }
-    else if (new Date(remote.dataModifica) > new Date(local.dataModifica)) {
+    else if (effectiveDate(remote) > effectiveDate(local)) {
        await saveLocalDb(remote, "put", collectionName);
     }
   }
 }
 
-async function checkDeleted(){
+async function checkDeleted(tableName){
     try{
         const dels = await getDeleted();
         for(const dataIn of  dels){
-            await deleteTrs(dataIn);
+            await deleteTrs(dataIn, tableName);
         }
 
-        await deletedCheckedDeleted();
+        await deleteCheckedDeleted();
     }catch(error){
         console.log(error);
     }
@@ -207,4 +208,8 @@ async function checkDeleted(){
 function normalizeTimestamp(ts) {
   if (!ts) return null;
   return new Date(ts).toISOString();
+}
+
+function effectiveDate(r) {
+  return Date.parse(r.dataModifica ?? r.dataInserimento);
 }

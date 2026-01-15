@@ -1123,3 +1123,6 @@ display: none !important;
   to { transform: rotate(360deg); }
 }
 
+.hidden{
+    display: none;
+}

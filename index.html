@@ -32,10 +32,9 @@
     <div class="nav-links">
         <a href="#" data-target="movimenti">Movimenti</a>
         <a href="#" data-target="grafici">Grafici</a>
-        <a href="#" data-target="gestisci-dati">Gestione Dati</a>
+        <a href="#" data-target="impostazioni">Impostazioni</a>
         <a href="#" data-target="categorie-section">Categorie</a>
         <a href="#" data-target="info">Info</a>
-        <a href="#" data-target="account">Account</a>
     </div>
 </nav>
 
@@ -171,11 +170,24 @@
 
 
 <!-- Pagina Gestisci dati //////////////////////////////////////////////////////////////-->
-<section id="gestisci-dati" class="page-section">
-    <h2>Gestione dati</h2>
+<section id="impostazioni" class="page-section">
+    <h2>Impostazioni</h2>
 
     <div id="spinnerOverlay" class="spinner-overlay">
         <div class="spinner"></div>
+    </div>
+    <div class="btn">
+        <div class="login-section">
+            <button id="sign-in">Accedi con google</button>
+        </div>
+
+        <div class="user-section hidden">
+            <p id="labelUser">ciao</p>
+        </div>
+
+        <div class="logout-section hidden">
+            <button id="sign-out">Logout</button>
+        </div>
     </div>
 
     <div class="btn">
@@ -252,27 +264,6 @@
     </div>
 </section>
 
-
-<!-- Pagina Account //////////////////////////////////////////////////////////////-->
-<section id="account" class="page-section">
-    <div class="sticky-bar bodyBackground">
-        <h2>Account</h2>
-    </div>
-    <div class="login-section">
-        <button id="sign-in">Accedi con google</button>
-    </div>
-
-    <div class="user-section">
-        <p id="labelUser"></p>
-    </div>
-
-    <div class="logout-section">
-        <button id="sign-out">Logout</button>
-    </div>
-    <div class="sync-section">
-
-    </div>
-</section>
 
 <script type="module" src="main.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>

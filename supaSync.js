@@ -104,9 +104,8 @@ export async function getTrs(trs, supaTable){
 */
 
 export async function syncDati() {
-
+    const overlaySpinner = document.getElementById('spinnerOverlay');
     try{
-        const overlaySpinner = document.getElementById('spinnerOverlay');
         overlaySpinner.style.display = 'flex';
 
         // Elimina in supabase le transazioni eliminate in locale

@@ -980,7 +980,7 @@ export async function checkAuth(){
             return null;
         }
     }catch(error){
-    console.error("Errore durante checkAuth",error);
+    console.error("Errore durante checkAuth", error);
     }
 }
 
@@ -1027,7 +1027,7 @@ export async function getUser(){
             if(isValid(user) && isValid(user.id)) {
                 currentUser = user;
             }else{
-                throw new Error("Utente non autenticato");
+                return null;
             }
         }
         return currentUser;

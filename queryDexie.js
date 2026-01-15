@@ -424,6 +424,14 @@ export async function updateCategoria(oldCat, newCat, richiesta, delTrns) {
     }
 }
 
+export async function updateRichieste(cat, operazione){
+const n = operazione === "more" ? 1 : -1;
+const categoria = await db.categorie.get(cat);
+const sum = categoria.richieste + n;
+await db.categorie.update(cat, { richieste: sum });
+}
+
+
 //////////////   UPDATE CATEGORIE IN TRANSAZIONI ////////////////////////
 async function updateCatInTrns(oldCat, newCat){
     const criteri = {categoria: [oldCat]}

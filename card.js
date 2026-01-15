@@ -5,7 +5,7 @@ import { updateEntrata } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast } from './main.js';
-import { getCategorie } from './queryDexie.js';
+import { getCategorie, updateRichieste } from './queryDexie.js';
 import { getCategorieArray } from './queryDexie.js';
 import { updateCategoria } from './queryDexie.js';
 import { categorieCreateComponent } from './main.js';
@@ -425,25 +425,28 @@ export async function overlayEdit(spesa) {
           overlay.classList.remove('showOverlay');
       });
 
-        categoriaElement.addEventListener("input", async (event) => {
-          const categorie = await getCategorie(categoriaElement.value);
-          const fragment = document.createDocumentFragment();
-          categorie.forEach((cat, i) => {
+    categoriaElement.addEventListener("input", async (event) => {
+        const categorie = await getCategorie(categoriaElement.value);
+        const fragment = document.createDocumentFragment();
+        categorie.forEach((cat, i) => {
             const card = catOverlay(cat.categoria, "editSpesa", null);
             card.classList.add("cardTr");
             card.style.animationDelay = `${i * 0.1}s`;
             fragment.appendChild(card);
-          });
-          catRow.replaceChildren(fragment);
         });
+        catRow.replaceChildren(fragment);
+    });
+    const oldCategoria = categoriaElement.value;
 
     form.addEventListener('submit', async (e) => {
+    const formCategoria = categoriaElement.value;
+    if(oldCategoria !== formCategoria) await updateRichieste(oldCategoria, "less");
     const tab = recuperaTab();
     e.preventDefault();
 
     const transazione = {
         id: parseInt(document.getElementById('editSpesaId').value),
-        categoria: categoriaElement.value,
+        categoria: formCategoria,
         dataInserimento: dataInserimento,
         data: document.getElementById('editData').value,
         importo: parseFloat(document.getElementById('editImporto').value),

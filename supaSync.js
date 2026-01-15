@@ -107,6 +107,7 @@ export async function syncDati() {
   // Elimina in supabase le transazioni eliminate in locale
   await checkDeleted("entrate");
   await checkDeleted("uscite");
+  await deleteCheckedDeleted();
 
   // ENTRATE
   await syncCollection({
@@ -197,11 +198,9 @@ async function syncCollection({ tableName, collectionName, bol }) {
 async function checkDeleted(tableName){
     try{
         const dels = await getDeleted();
-        for(const dataIn of  dels){
-            await deleteTrs(dataIn, tableName);
+        for(const del of  dels){
+            await deleteTrs(del.dataInserimento, tableName);
         }
-
-        await deleteCheckedDeleted();
     }catch(error){
         console.log(error);
     }

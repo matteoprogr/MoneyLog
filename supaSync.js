@@ -104,24 +104,35 @@ export async function getTrs(trs, supaTable){
 */
 
 export async function syncDati() {
-  // Elimina in supabase le transazioni eliminate in locale
-  await checkDeleted("entrate");
-  await checkDeleted("uscite");
-  await deleteCheckedDeleted();
 
-  // ENTRATE
-  await syncCollection({
-    tableName: 'entrate',
-    collectionName: 'entrate',
-    bol: true
-  })
+    try{
+        const overlaySpinner = document.getElementById('spinnerOverlay');
+        overlaySpinner.style.display = 'flex';
 
-  // USCITE
-  await syncCollection({
-    tableName: 'uscite',
-    collectionName: 'spese',
-    bol: false
-  })
+        // Elimina in supabase le transazioni eliminate in locale
+        await checkDeleted("entrate");
+        await checkDeleted("uscite");
+        await deleteCheckedDeleted();
+
+        // ENTRATE
+        await syncCollection({
+        tableName: 'entrate',
+        collectionName: 'entrate',
+        bol: true
+        })
+
+        // USCITE
+        await syncCollection({
+        tableName: 'uscite',
+        collectionName: 'spese',
+        bol: false
+        })
+        showToast("Sincronizzazione completata ✅","succes");
+    }catch(err){
+        showErrorToast("Errore durante la sincronizzazione dei dati","error")
+    }finally{
+        overlaySpinner.style.display = 'none';
+    }
 }
 
 
@@ -193,6 +204,7 @@ async function syncCollection({ tableName, collectionName, bol }) {
        await saveLocalDb(remoteId, "put", collectionName);
     }
   }
+
 }
 
 async function checkDeleted(tableName){

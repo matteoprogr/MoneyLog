@@ -706,7 +706,7 @@ export async function categorieCreateComponent() {
         zeroCategorie.appendChild(nodo);
     }else{
         categorie.forEach(cat => {
-          const nodo = categoriaComponent(cat.categoria);
+          const nodo = categoriaComponent(cat.categoria, cat.richieste -1);
           categorieList.appendChild(nodo);
         });
     }

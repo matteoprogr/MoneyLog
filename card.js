@@ -140,7 +140,7 @@ export function nessunaCategoriaComponent(tipo) {
 }
 
 
-export function categoriaComponent(categoria) {
+export function categoriaComponent(categoria, richieste) {
     const container = document.createElement("div");
     container.classList.add("cat");
     let pressTimer;
@@ -149,6 +149,7 @@ export function categoriaComponent(categoria) {
         container.innerHTML = `
           <div class="cat-header">
             <span class="cat-name">${categoria}</span>
+            <span class="countTrs">${richieste}</span>
           </div>
         `;
     }else {
@@ -156,6 +157,7 @@ export function categoriaComponent(categoria) {
     container.innerHTML = `
       <div class="cat-header">
         <span class="cat-name">${categoria}</span>
+        <span class="countTrs">${richieste}</span>
       </div>
     `;
 

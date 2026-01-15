@@ -973,11 +973,11 @@ export async function checkAuth(){
         if(session && session.user){
             console.log("✅ Utente autenticato:", session.user.email);
             currentUser = session.user;
+            showUserSection(data);
             return currentUser;
         }else{
             return null;
         }
-        showUserSection(data);
     }catch(error){
     console.error("Errore durante checkAuth",error);
     }
@@ -992,7 +992,6 @@ async function loginWithGoogle() {
     }
   });
   if (error) console.error('Login error:', error);
-  showUserSection(data);
 }
 
 async function showUserSection(data){
@@ -1013,6 +1012,7 @@ async function logout() {
     console.error('Errore logout:', error.message)
   }
   currentUser = null;
+  await checkAuth();
 }
 
 export async function getUser(){

@@ -187,7 +187,8 @@ async function syncCollection({ tableName, collectionName, bol }) {
       await saveLocalDb(remote, "add", collectionName);
     }
     else if (effectiveDate(remote) > effectiveDate(local)) {
-       await saveLocalDb(remote, "put", collectionName);
+       const remoteId = {...remote, id: local.id };
+       await saveLocalDb(remoteId, "put", collectionName);
     }
   }
 }

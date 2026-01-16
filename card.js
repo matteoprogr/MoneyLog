@@ -1,13 +1,8 @@
-import { saveSpesa } from './queryDexie.js';
-import { updateSpesa } from './queryDexie.js';
-import { saveEntrata } from './queryDexie.js';
-import { updateEntrata } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast } from './main.js';
-import { getCategorie, updateRichieste } from './queryDexie.js';
-import { getCategorieArray } from './queryDexie.js';
-import { updateCategoria } from './queryDexie.js';
+import { getCategorie, switchRichieste, replaceCat } from './queryDexie.js';
 import { categorieCreateComponent } from './main.js';
 import { getUser } from './main.js';
 import { insertTrs } from './supaSync.js';
@@ -179,7 +174,7 @@ export function categoriaComponent(categoria, richieste) {
             span.textContent = newValue;
             try{ input.replaceWith(span); }catch{}
             if (oldValue !== newValue) {
-                await updateCategoria(oldValue, newValue,false, false);
+                await replaceCat(oldValue, newValue);
             }
             categorieCreateComponent();
 
@@ -275,11 +270,15 @@ openBtn.addEventListener('click', async (e) => {
 
 
   try {
+    const user = await getUser();
     if(!tab){
-        await saveSpesa(transazione);
+        await saveTrsLocal(transazione, "spese");
+        if(isValid(user)) await insertTrs(transazione, "uscite");
     }else if(tab){
-        await saveEntrata(transazione);
+        await saveTrsLocal(transazione, "entrate")
+        if(isValid(user)) await insertTrs(transazione, "entrate");
     }
+    await saveCategoria(transazione.categoria);
 
     overlay.classList.remove('showOverlay');
     createCriteri();
@@ -345,7 +344,7 @@ export async function overlayRicerca() {
               }
           }
 
-          const categorie = await getCategorieArray(criteri);
+          const categorie = await getCategorie(criteri);
           const fragment = document.createDocumentFragment();
           categorie.forEach((cat, i) => {
             const card = catOverlay(cat.categoria, "getSpese", selectedCards);
@@ -439,10 +438,11 @@ export async function overlayEdit(spesa) {
     const oldCategoria = categoriaElement.value;
 
     form.addEventListener('submit', async (e) => {
-    const formCategoria = categoriaElement.value;
-    if(oldCategoria !== formCategoria) await updateRichieste(oldCategoria, "less");
-    const tab = recuperaTab();
     e.preventDefault();
+    const formCategoria = categoriaElement.value;
+    if(oldCategoria !== formCategoria)  await switchRichieste(oldCategoria, formCategoria);
+
+    const tab = recuperaTab();
 
     const transazione = {
         id: parseInt(document.getElementById('editSpesaId').value),
@@ -453,10 +453,14 @@ export async function overlayEdit(spesa) {
         descrizione: document.getElementById('editDescrizione').value
      };
        try {
+       const user = await getUser();
         if(!tab){
-        await updateSpesa(transazione,true);
+        await updateTrsLocal(transazione, "spese");
+        if(isValid(user)) await updateTrs(transazione, "uscita");
+
         }else if(tab){
-        await updateEntrata(transazione,true);
+        await updateTrsLocal(transazione, "entrate");
+        if(isValid(user)) await updateTrs(transazione, "entrate");
         }
          overlay.classList.remove('showOverlay');
          createCriteri();

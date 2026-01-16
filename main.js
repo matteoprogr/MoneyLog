@@ -1,7 +1,6 @@
-import { saveSpesa } from './queryDexie.js';
 import { queryTrns } from './queryDexie.js';
 import { deleteSpese } from './queryDexie.js';
-import { updateCategoria } from './queryDexie.js';
+import { updateRichieste } from './queryDexie.js';
 import { deleteCategorie } from './queryDexie.js';
 import { creaSpesaComponent } from './card.js';
 import { creaComponentTotale } from './card.js';
@@ -875,7 +874,7 @@ async function deleteSpesaBtn() {
 for (const card of selectedCards) {
     const categoria = card.querySelector(".categoria");
     const oldValue = categoria.innerText;
-    await updateCategoria(oldValue, null, true, true);
+    await updateRichieste(oldValue, "less");
 }
 
     if(criteri.length === 1){

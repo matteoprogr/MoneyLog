@@ -1,5 +1,5 @@
 import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
-import { queryTrns, saveLocalDb, getDeleted, deleteCheckedDeleted, getTrsByDataIns } from './queryDexie.js'
+import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -132,6 +132,9 @@ export async function syncDati() {
     }finally{
         overlaySpinner.style.display = 'none';
     }
+
+
+    await saveCategoriaRemoto();
 }
 
 
@@ -145,6 +148,7 @@ async function syncCollection({ tableName, collectionName, bol }) {
 
   if (error) throw error
 
+// VERIFICARE LO RIMOZIONE DELLA NORMALIZZAZIONE TANSAZIONI
     // Normalizzazione locale
     const normalizedLocal = localRecords.map(r => ({
         dataInserimento: normalizeTimestamp(r.dataInserimento),
@@ -168,11 +172,11 @@ async function syncCollection({ tableName, collectionName, bol }) {
 
   // Indicizzazione per dataInserimento
   const localMap = new Map(
-    normalizedLocal.map(r => [r.dataInserimento, r])
+    localRecords.map(r => [r.dataInserimento, r])
   )
 
   const remoteMap = new Map(
-    normalizedRemote.map(r => [r.dataInserimento, r])
+    remoteRecords.map(r => [r.dataInserimento, r])
   )
 
   // Locale → Remoto
@@ -195,16 +199,38 @@ async function syncCollection({ tableName, collectionName, bol }) {
     const local = localMap.get(key);
 
     if (!local) {
-      await saveLocalDb(remote, "add", collectionName);
+      await saveTrsLocal(remote, collectionName);
+      await saveCategoria(remote.categoria);
     }
     else if (effectiveDate(remote) > effectiveDate(local)) {
        const localTrs = await getTrsByDataIns(collectionName, key);
        const remoteId = {...remote, id: localTrs.id };
-       await saveLocalDb(remoteId, "put", collectionName);
+       await updateTrsLocal(remoteId, collectionName);
+       const localCat = localTrs.categoria.trim();
+       const remoteCat = remoteId.categoria.trim();
+       if(localCat !== remoteCat) await switchRichieste(localCat, remoteCat);
     }
   }
 
 }
+
+async function saveCategoriaRemoto() {
+  try {
+    const categorie = await getCategorie();
+
+    if (!categorie || categorie.length === 0) return;
+
+    const { error } = await supabaseClient
+      .from('categorie')
+      .upsert(categorie, { onConflict: 'categoria' });
+
+    if (error) throw error;
+
+  } catch (error) {
+    console.error('Errore durante il salvataggio categorie in Supabase', error);
+  }
+}
+
 
 async function checkDeleted(tableName){
     try{

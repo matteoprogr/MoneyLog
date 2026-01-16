@@ -31,7 +31,7 @@ async function initCategorie(){
     const isInit = await db.defaultCat.get("init");
     if(!isInit){
         for (const cat of catList) {
-            await saveCategoria(cat);
+            await initSaveCategoria(cat);
         }
     }
 
@@ -39,25 +39,23 @@ async function initCategorie(){
 }
 
 /////////////////   SALVATAGGIO TRANSAZIONI   ///////////////////////////
-export async function saveSpesa(spesa) {
+export async function saveTrsLocal(trs, collectionName) {
   try {
     initDB();
-    const fomattedISO = new Date(spesa.data).toISOString().split('T')[0];
-    const categoria = capitalizeFirstLetter(spesa.categoria);
+    const collection = db[collectionName];
+
+    const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
+    const categoria = capitalizeFirstLetter(trs.categoria);
     const data = {
-      descrizione: await setDescrizione(spesa.descrizione,categoria),
-      importo: -Math.abs(spesa.importo),
+      descrizione: await setDescrizione(trs.descrizione, categoria),
+      importo: -Math.abs(trs.importo),
       categoria: categoria,
       dataInserimento: new Date().toISOString(),
       data: fomattedISO
     };
 
-    await saveCategoria(spesa.categoria);
-    const id = await db.spese.add(data);
-
-    const user = await getUser();
-    if(isValid(user)) insertTrs(data, 'uscite');
-    showToast("uscita aggiunta con successo", "success");
+    const id = await collection.add(data);
+    showToast("transazione aggiunta con successo", "success");
 
     return { success: true, id };
   } catch (error) {
@@ -66,13 +64,6 @@ export async function saveSpesa(spesa) {
   }
 }
 
-export async function saveLocalDb(trs, crud, collection){
-    initDB();
-    if(crud === "add" && collection === "spese") await db.spese.add(trs);
-    if(crud === "put"&& collection === "spese") await db.spese.put(trs);
-    if(crud === "add" && collection === "entrate") await db.entrate.add(trs);
-    if(crud === "put"&& collection === "entrate") await db.entrate.put(trs);
-}
 
 export async function getDeleted(){
     initDB();
@@ -85,35 +76,6 @@ export async function deleteCheckedDeleted(){
 }
 
 
-export async function saveEntrata(entrata) {
-  try {
-
-    initDB();
-    const fomattedISO = new Date(entrata.data).toISOString().split('T')[0];
-    const categoria = capitalizeFirstLetter(entrata.categoria);
-
-    const data = {
-      descrizione: await setDescrizione(entrata.descrizione,categoria),
-      importo: entrata.importo,
-      categoria: categoria,
-      dataInserimento: new Date().toISOString(),
-      data: fomattedISO
-    };
-
-    await saveCategoria(entrata.categoria);
-    const id = await db.entrate.add(data);
-
-    const user = await getUser();
-    if(isValid(user)) insertTrs(data, 'entrate');
-    showToast("entrata aggiunta con successo", "success");
-
-    return { success: true, id };
-  } catch (error) {
-    console.error("Errore nel salvataggio entrata:", error);
-    return { success: false, error };
-  }
-}
-
 async function setDescrizione(descrizione, categoria){
      if(descrizione === ""){
         return categoria;
@@ -124,6 +86,11 @@ async function setDescrizione(descrizione, categoria){
 
 
 /////////// SALVATAGGIO CATEGORIE //////////////////////
+
+async function initSaveCategoria(categoria){
+    await db.categorie.add({ categoria: categoria, richieste: 0 });
+}
+
 export async function saveCategoria(categoria) {
   const categoriaLower = categoria.toLowerCase().trim();
   const categoriaCapitalized = capitalizeFirstLetter(categoriaLower);
@@ -133,10 +100,10 @@ export async function saveCategoria(categoria) {
     if(!isValid(cat)){
     await db.categorie.add({
         categoria: categoriaCapitalized,
-        richieste: 0
+        richieste: 1
          });
     }else{
-        updateCategoria(categoria, null, true, false);
+        updateRichieste(null, "more", cat);
     }
 
   } catch (error) {
@@ -153,79 +120,36 @@ export function capitalizeFirstLetter(str) {
 
 
 ////////// UPDATE TRANSAZIONI ///////////////////
-export async function updateSpesa( spesa, isNew) {
+export async function updateTrsLocal( trs, collectionName) {
   try {
     initDB();
-
-    if (!spesa.id) {
+    const collection = db[collectionName];
+    if (!trs.id) {
       throw new Error("ID uscita mancante per la sostituzione");
     }
 
-    const fomattedISO = new Date(spesa.data).toISOString().split('T')[0];
-    const categoria = capitalizeFirstLetter(spesa.categoria);
+    const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
+    const categoria = capitalizeFirstLetter(trs.categoria);
     const data = {
-      id: spesa.id,
-      descrizione: await setDescrizione(spesa.descrizione,categoria),
-      dataInserimento: isValid(spesa.dataInserimento) ? spesa.dataInserimento : fomattedISO,
-      importo: -Math.abs(spesa.importo),
+      id: trs.id,
+      descrizione: await setDescrizione(trs.descrizione,categoria),
+      dataInserimento: isValid(trs.dataInserimento) ? trs.dataInserimento : fomattedISO,
+      importo: -Math.abs(trs.importo),
       categoria: categoria,
       data: fomattedISO,
       dataModifica: new Date().toISOString()
     };
-    if(isNew){
-        await saveCategoria(spesa.categoria);
-    }
 
-    const id = await db.spese.put(data);
-    const user = await getUser();
-    if(isValid(user)) updateTrs(data, 'uscite');
-
-    showToast("Uscita sostituita con successo", "success");
+    const id = await collection.put(data);
+    showToast("Transazione sostituita con successo", "success");
     return { success: true, id };
 
   } catch (error) {
-    console.error("Errore nella sostituzione uscita:", error);
-    showToast("Errore durante la sostituzione della uscita", "error");
+    console.error("Errore nella sostituzione della transazione:", error);
+    showToast("Errore durante la sostituzione della transazione", "error");
     return { success: false, error };
   }
 }
-
-export async function updateEntrata(entrata, isNew) {
-  try {
-    initDB();
-
-    if (!entrata.id) {
-      throw new Error("ID entrata mancante per la sostituzione");
-    }
-
-    const fomattedISO = new Date(entrata.data).toISOString().split('T')[0];
-    const categoria = capitalizeFirstLetter(entrata.categoria);
-    const data = {
-      id: entrata.id,
-      descrizione: await setDescrizione(entrata.descrizione,categoria),
-      importo: entrata.importo,
-      categoria: categoria,
-      data: fomattedISO,
-      dataInserimento: isValid(entrata.dataInserimento) !== null ? entrata.dataInserimento : fomattedISO,
-      dataModifica: new Date().toISOString()
-    };
-
-    if(isNew){
-        await saveCategoria(entrata.categoria);
-    }
-
-    const id = await db.entrate.put(data);
-    const user = await getUser();
-    if(isValid(user)) updateTrs(data, 'entrate');
-    showToast("Entrata sostituita con successo", "success");
-    return { success: true, id };
-
-  } catch (error) {
-    showToast("Errore durante la sostituzione della entrata", "error");
-    return { success: false, error };
-  }
-}
-
 
 
 /////////////////  RICERCA ///////////////////////
@@ -345,44 +269,20 @@ export async function deleteCategorie(criteri = []) {
 }
 
 //////////// GET CATEGORIE /////////////////
-export async function getCategorie(criterio) {
-    initDB();
-
-    let categorie;
-    if (!criterio || criterio.trim() === "") {
-        categorie = await db.categorie.toArray();
-    } else {
-        categorie = await db.categorie
-            .where("categoria")
-            .startsWithIgnoreCase(criterio)
-            .toArray();
-    }
-
-    return categorie.sort((a, b) => b.richieste - a.richieste);
-}
-
-export async function getCategorieArray(criteri) {
+export async function getCategorie(criteri) {
   initDB();
 
   let criteriArray = [];
-
-  if (!criteri || (Array.isArray(criteri) && criteri.length === 0) || (typeof criteri === 'string' && criteri.trim() === '')) {
-    return (await db.categorie.toArray()).sort((a, b) => b.richieste - a.richieste);
-  }
-
   if (Array.isArray(criteri)) {
     criteriArray = criteri;
-  } else {
+  } else if (typeof criteri === 'string' && criteri.trim() !== '') {
     criteriArray = [criteri];
   }
 
-  // Rimuovi stringhe vuote
   criteriArray = criteriArray.filter(c => typeof c === 'string' && c.trim() !== '');
-
   let categorie;
 
   if (criteriArray.length > 0) {
-    // Query Indicizzata con Dexie
     categorie = await db.categorie
       .where('categoria')
       .startsWithAnyOfIgnoreCase(criteriArray)
@@ -394,63 +294,81 @@ export async function getCategorieArray(criteri) {
   return categorie.sort((a, b) => b.richieste - a.richieste);
 }
 
+export async function getCategorieEsatta(categoria) {
+  initDB();
+  if (typeof categoria !== 'string' || categoria.trim() === '') {
+    return (await db.categorie.toArray()).sort((a, b) => b.richieste - a.richieste); }
 
-//////////// UPDATE CATEGORIE /////////////////
-export async function updateCategoria(oldCat, newCat, richiesta, delTrns) {
-    try{
-        const record = await db.categorie.get(oldCat);
-        let recordNew;
-        if(isValid(newCat)){
-            recordNew = await db.categorie.get(newCat);
-            newCat = capitalizeFirstLetter(newCat);
-        }
-        if(richiesta === false){
-            if (oldCat === newCat) return;
-            if (!isValid(record)) return;
-            await db.categorie.delete(oldCat);
-            if (!isValid(recordNew)) await db.categorie.put({ ...record, categoria: newCat });
-            updateCatInTrns(oldCat, newCat);
-        }else if(richiesta === true){
-            if(delTrns === true){
-                const count = record.richieste - 1;
-                await db.categorie.update(oldCat, { richieste: count });
-            }else{
-                const count = record.richieste + 1;
-                await db.categorie.update(oldCat, { richieste: count });
-            }
-        }
-    }catch(err){
-        showErrorToast("Errore durante l'update","error")
-    }
+  const categorie = await db.categorie
+    .where('categoria')
+    .equals(categoria.trim())
+    .toArray();
+
+  return categorie.sort((a, b) => b.richieste - a.richieste);
 }
 
-export async function updateRichieste(cat, operazione){
-const n = operazione === "more" ? 1 : -1;
-const categoria = await db.categorie.get(cat);
-const sum = categoria.richieste + n;
-await db.categorie.update(cat, { richieste: sum });
+
+//////////// UPDATE CATEGORIE /////////////////
+export async function updateRichieste(nome, operazione, cat){
+    const n = operazione === "more" ? 1 : -1;
+    let categoria;
+    let nomeCat;
+    if(isValid(nome)){
+        const array = await getCategorie(nome);
+        categoria = array[0];
+    }else if (isValid(cat)){
+        categoria  = cat;
+    }
+
+    const r = categoria.richieste;
+    nomeCat = categoria.categoria;
+    const sum = r + n;
+    await db.categorie.update(nomeCat, { richieste: sum });
+}
+
+export async function switchRichieste(nomeOld, nomeNew){
+    await updateRichieste(nomeOld, "less");
+    await saveCategoria(nomeNew);
+}
+
+export async function replaceCat(oldCat, newCat) {
+  if (oldCat === newCat) return;
+  const oldArr = await getCategorieEsatta(oldCat);
+  if (!oldArr || oldArr.length === 0) return;
+  const record = oldArr[0];
+  await db.categorie.delete(oldCat);
+  if(!await db.categorie.get(newCat)) await db.categorie.put({...record,categoria: newCat });
+  const newArr = await getCategorieEsatta(newCat);
+  const recordNew = newArr[0];
+  await updateCatInTrns(record, recordNew);
 }
 
 
 //////////////   UPDATE CATEGORIE IN TRANSAZIONI ////////////////////////
 async function updateCatInTrns(oldCat, newCat){
-    const criteri = {categoria: [oldCat]}
+    const criteri = {categoria: [oldCat.categoria]}
     const catSpese = await queryTrns(criteri, false);
     const catEntrate = await queryTrns(criteri, true);
+    const newRecord = newCat.categoria;
     if(catSpese.length !== 0){
         for(const spesa of catSpese){
-            spesa.categoria = newCat;
-            await updateSpesa(spesa,false);
+            spesa.categoria = newRecord;
+            await updateTrsLocal(spesa,"spese");
+            await updateRichieste(null, "less", oldCat);
+            await updateRichieste(null, "more", newRecord);
         }
     }
     if(catEntrate.length !== 0){
         for(const entrata of catEntrate){
-            entrata.categoria = newCat;
-            await updateEntrata(entrata, false);
+            entrata.categoria = newRecord;
+            await updateTrsLocal(entrata, "entrate");
+            await updateRichieste(null, "less", oldCat);
+            await updateRichieste(null, "more", newRecord);
         }
     }
 
 }
+
 
 document.getElementById('btnDeleteData').addEventListener('click', () => {
   apriConferma();
@@ -575,10 +493,11 @@ async function importaDatabase(file) {
 
         for (const trns of transazioni) {
             if (trns.importo < 0) {
-                await saveSpesa(trns);
+                await saveTrsLocal(trns, "spese");
             } else if (trns.importo > 0) {
-                await saveEntrata(trns);
+                await saveEntrata(trns, "entrate");
             }
+            await saveCategoria(transazione.categoria);
         }
 
         showToast("Importazione completata!", "success");

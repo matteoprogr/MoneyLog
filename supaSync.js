@@ -172,11 +172,11 @@ async function syncCollection({ tableName, collectionName, bol }) {
 
   // Indicizzazione per dataInserimento
   const localMap = new Map(
-    localRecords.map(r => [r.dataInserimento, r])
+    normalizedLocal.map(r => [r.dataInserimento, r])
   )
 
   const remoteMap = new Map(
-    remoteRecords.map(r => [r.dataInserimento, r])
+    normalizedRemote.map(r => [r.dataInserimento, r])
   )
 
   // Locale → Remoto

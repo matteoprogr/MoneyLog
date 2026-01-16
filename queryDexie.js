@@ -43,12 +43,13 @@ export async function saveTrsLocal(trs, collectionName) {
   try {
     initDB();
     const collection = db[collectionName];
+    const importo = collectionName === "spese" ? -Math.abs(trs.importo) : Math.abs(trs.importo)
 
     const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
     const categoria = capitalizeFirstLetter(trs.categoria);
     const data = {
       descrizione: await setDescrizione(trs.descrizione, categoria),
-      importo: -Math.abs(trs.importo),
+      importo: importo,
       categoria: categoria,
       dataInserimento: new Date().toISOString(),
       data: fomattedISO

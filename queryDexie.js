@@ -498,7 +498,7 @@ async function importaDatabase(file) {
             } else if (trns.importo > 0) {
                 await saveEntrata(trns, "entrate");
             }
-            await saveCategoria(transazione.categoria);
+            await saveCategoria(trns.categoria);
         }
 
         showToast("Importazione completata!", "success");

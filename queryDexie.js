@@ -496,7 +496,7 @@ async function importaDatabase(file) {
             if (trns.importo < 0) {
                 await saveTrsLocal(trns, "spese");
             } else if (trns.importo > 0) {
-                await saveEntrata(trns, "entrate");
+                await saveTrsLocal(trns, "entrate");
             }
             await saveCategoria(trns.categoria);
         }

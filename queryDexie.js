@@ -263,7 +263,8 @@ export async function deleteCategorie(criteri = []) {
             .delete();
     }
     for(const categoria of criteri){
-        updateCatInTrns(categoria, "Altro");
+        const defaultCat = await getCategorieEsatta("Altro");
+        updateCatInTrns({categoria: categoria, richieste: 0}, defaultCat[0]);
     }
     return;
 }
@@ -354,7 +355,7 @@ async function updateCatInTrns(oldCat, newCat){
         for(const spesa of catSpese){
             spesa.categoria = newRecord;
             await updateTrsLocal(spesa,"spese");
-            await updateRichieste(null, "less", oldCat);
+            if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
             await updateRichieste(null, "more", newRecord);
         }
     }
@@ -362,7 +363,7 @@ async function updateCatInTrns(oldCat, newCat){
         for(const entrata of catEntrate){
             entrata.categoria = newRecord;
             await updateTrsLocal(entrata, "entrate");
-            await updateRichieste(null, "less", oldCat);
+            if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
             await updateRichieste(null, "more", newRecord);
         }
     }

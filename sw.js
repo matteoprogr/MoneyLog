@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moneylog-cache-v30';
+const CACHE_NAME = 'moneylog-cache-v31';
 const urlsToCache = [
   '/',
   '/index.html',

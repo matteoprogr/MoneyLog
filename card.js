@@ -5,7 +5,7 @@ import { showErrorToast, showToast } from './main.js';
 import { getCategorie, switchRichieste, replaceCat } from './queryDexie.js';
 import { categorieCreateComponent } from './main.js';
 import { getUser } from './main.js';
-import { insertTrs } from './supaSync.js';
+import { insertTrs, updateTrs } from './supaSync.js';
 
 export function creaSpesaComponent(trsn,tabActive) {
 

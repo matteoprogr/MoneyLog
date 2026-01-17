@@ -119,7 +119,7 @@ export async function syncDati() {
         showToast("Sincronizzazione completata ✅","succes");
     }catch(err){
         showErrorToast("Errore durante la sincronizzazione dei dati","error");
-        console.log()"Errore durante la sincronizzazione dei dati", err);
+        console.log("Errore durante la sincronizzazione dei dati", err);
     }finally{
         overlaySpinner.style.display = 'none';
     }

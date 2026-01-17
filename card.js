@@ -453,21 +453,20 @@ export async function overlayEdit(spesa) {
         importo: parseFloat(document.getElementById('editImporto').value),
         descrizione: document.getElementById('editDescrizione').value
      };
-       try {
-       const user = await getUser();
+    try {
+        const user = await getUser();
         if(!tab){
-        await updateTrsLocal(transazione, "spese");
-        if(isValid(user)) await updateTrs(transazione, "uscite");
-
+            await updateTrsLocal(transazione, "spese");
+            if(isValid(user)) await updateTrs(transazione, "uscite");
         }else if(tab){
-        await updateTrsLocal(transazione, "entrate");
-        if(isValid(user)) await updateTrs(transazione, "entrate");
+            await updateTrsLocal(transazione, "entrate");
+            if(isValid(user)) await updateTrs(transazione, "entrate");
         }
-         overlay.classList.remove('showOverlay');
-         createCriteri();
-       } catch (err) {
-         showErrorToast("Errore durante la modifica:", "error");
-         console.log(err);
-       }
+        overlay.classList.remove('showOverlay');
+        createCriteri();
+    } catch (err) {
+        showErrorToast("Errore durante la modifica:", "error");
+        console.log(err);
+    }
     });
 }

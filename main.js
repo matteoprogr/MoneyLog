@@ -875,7 +875,7 @@ async function deleteSpesaBtn() {
         await deleteSpese(criteri, tab);
 
         const user = await getUser();
-        const tableName = tab === false ? "uscita" : "entrata";
+        const tableName = tab === false ? "uscite" : "entrate";
         isValid(user) && await Promise.all(criteri.map(date => deleteTrs(date, tableName)));
 
         await saveDeletedTrs(criteri);

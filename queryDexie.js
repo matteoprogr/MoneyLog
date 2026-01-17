@@ -65,7 +65,7 @@ export async function trsObject(trs, collectionName){
 }
 
 export async function removeId(trsOb){
-    trsOb.id = null;
+    delete trsOb.id;
     return trsOb
 }
 

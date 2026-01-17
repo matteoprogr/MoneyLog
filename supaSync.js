@@ -1,5 +1,5 @@
 import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
-import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie } from './queryDexie.js'
+import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie, deleteSpese } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -65,14 +65,15 @@ export async function updateTrs(trs, supaTable){
 
 export async function deleteTrs(dataInserimento, supaTable){
     try{
-        const { data, error } =
-        await supabaseClient
-            .from(supaTable)
-            .delete()
-            .eq('dataInserimento', dataInserimento);
-        if(error) {
-            console.log("Errore nel salvataggio", error);
+        const { error } = await supabaseClient
+          .from(supaTable)
+          .update({ deleted: true })
+          .eq('dataInserimento', dataInserimento);
+
+        if (error) {
+          console.error('Errore aggiornamento deleted', error);
         }
+
     }catch(error){
         console.error(error);
     }
@@ -126,15 +127,13 @@ export async function syncDati() {
         collectionName: 'spese',
         bol: false
         })
+
         showToast("Sincronizzazione completata ✅","succes");
     }catch(err){
         showErrorToast("Errore durante la sincronizzazione dei dati","error")
     }finally{
         overlaySpinner.style.display = 'none';
     }
-
-
-    await saveCategoriaRemoto();
 }
 
 
@@ -148,8 +147,6 @@ async function syncCollection({ tableName, collectionName, bol }) {
 
   if (error) throw error
 
-// VERIFICARE LO RIMOZIONE DELLA NORMALIZZAZIONE TANSAZIONI
-    // Normalizzazione locale
     const normalizedLocal = localRecords.map(r => ({
         dataInserimento: normalizeTimestamp(r.dataInserimento),
         dataModifica: normalizeTimestamp(r.dataModifica),
@@ -159,18 +156,16 @@ async function syncCollection({ tableName, collectionName, bol }) {
         data: r.data
     }));
 
-    // Normalizzazione remoto
     const normalizedRemote = remoteRecords.map(r => ({
         dataInserimento: normalizeTimestamp(r.dataInserimento),
         dataModifica: normalizeTimestamp(r.dataModifica),
         importo: r.importo,
         categoria: r.categoria,
         descrizione: r.descrizione,
-        data: r.data
+        data: r.data,
+        deleted: r.deleted
     }));
 
-
-  // Indicizzazione per dataInserimento
   const localMap = new Map(
     normalizedLocal.map(r => [r.dataInserimento, r])
   )
@@ -180,8 +175,13 @@ async function syncCollection({ tableName, collectionName, bol }) {
   )
 
   // Locale → Remoto
+  const criteri = [];
   for (const [key, local] of localMap) {
     const remote = remoteMap.get(key);
+    if(remote.deleted) {
+        criteri.push(remote.dataInserimento);
+        continue;
+    }
 
     if (!remote) {
       await supabaseClient.from(tableName).insert(local);
@@ -193,9 +193,15 @@ async function syncCollection({ tableName, collectionName, bol }) {
         .eq('dataInserimento', key)
     }
   }
+  if(criteri.length > 0){
+    const tab = collectionName === "spese" ? false : true;
+    await deleteSpese(criteri, tab);
+  }
+
 
   //  Remoto → Locale
   for (const [key, remote] of remoteMap) {
+    if(remote.deleted) continue;
     const local = localMap.get(key);
 
     if (!local) {
@@ -210,24 +216,6 @@ async function syncCollection({ tableName, collectionName, bol }) {
        const remoteCat = remoteId.categoria.trim();
        if(localCat !== remoteCat) await switchRichieste(localCat, remoteCat);
     }
-  }
-
-}
-
-async function saveCategoriaRemoto() {
-  try {
-    const categorie = await getCategorie();
-
-    if (!categorie || categorie.length === 0) return;
-
-    const { error } = await supabaseClient
-      .from('categorie')
-      .upsert(categorie, { onConflict: 'categoria' });
-
-    if (error) throw error;
-
-  } catch (error) {
-    console.error('Errore durante il salvataggio categorie in Supabase', error);
   }
 }
 

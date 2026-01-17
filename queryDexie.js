@@ -13,9 +13,9 @@ export function initDB() {
   if (!db) {
     db = new Dexie('MoneyLogDB');
     db.version(1).stores({
-      spese: '++id, *categoria, importo, data, [importo+data], [data+importo], dataInserimento',
+      spese: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo]',
       categorie: '&categoria',
-      entrate: '++id, *categoria, importo, data, [importo+data], [data+importo], dataInserimento',
+      entrate: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo]',
       defaultCat: 'inizializato',
       deletedTrs: '++id'
     });
@@ -43,27 +43,42 @@ export async function saveTrsLocal(trs, collectionName) {
   try {
     initDB();
     const collection = db[collectionName];
-    const importo = collectionName === "spese" ? -Math.abs(trs.importo) : Math.abs(trs.importo)
 
+    const importo = collectionName === "spese" ? -Math.abs(trs.importo) : Math.abs(trs.importo);
     const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
     const categoria = capitalizeFirstLetter(trs.categoria);
+    const dataIns = isValid(trs.dataInserimento) ? trs.dataInserimento : new Date().toISOString();
+    const dataMod = isValid(trs.dataModifica) ? trs.dataModifica : new Date().toISOString();
+    const descrizione = await setDescrizione(trs.descrizione, categoria);
+
     const data = {
-      descrizione: await setDescrizione(trs.descrizione, categoria),
+      descrizione: descrizione,
       importo: importo,
       categoria: categoria,
-      dataInserimento: new Date().toISOString(),
+      dataInserimento: dataIns,
+      dataModifica: dataMod,
       data: fomattedISO
     };
 
+    await sleep(1);
     const id = await collection.add(data);
-    showToast("transazione aggiunta con successo", "success");
+
 
     return { success: true, id };
   } catch (error) {
-    console.error("Errore nel salvataggio uscita:", error);
+      if (error.name === 'ConstraintError') {
+        console.warn('dataInserimento già esistente');
+      } else {
+        throw error;
+      }
     return { success: false, error };
   }
 }
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 
 
 export async function getDeleted(){
@@ -225,34 +240,20 @@ export async function getTrsByDataIns(collectionName, dataInserimento) {
 export async function deleteSpese(criteri = {}, tabActive) {
 
     let collezione;
-    let tableName;
     if(!tabActive){
         collezione = db.spese.toCollection();
-        tableName = "uscite";
+
     }else if(tabActive){
         collezione = db.entrate.toCollection();
-        tableName = "entrate";
     }
 
     if (Array.isArray(criteri) && criteri.length > 0) {
-
-        const deletedTransaction = await collezione.filter(trns => criteri.includes(trns.dataInserimento)).toArray();
-
-        await db.deletedTrs.bulkAdd(
-            deletedTransaction.map(trns => ({
-                dataInserimento: trns.dataInserimento
-            }))
-        );
-
         await  collezione.filter(trns => criteri.includes(trns.dataInserimento)).delete();
-
-        const user = await getUser();
-        if(isValid(user)){
-            for(const date of criteri){
-                await deleteTrs(date,tableName);
-            }
-        }
     }
+}
+
+export async function saveDeletedTrs(criteri){
+    await db.deletedTrs.bulkAdd( criteri.map(dataInserimento => ({ dataInserimento })) );
 }
 
 //////////// DELETE CATEGORIE /////////////////
@@ -427,28 +428,34 @@ async function esportaDatabase() {
         const result = {
             id: [],
             dataValuta: [],
+            dataInserimento: [],
+            dataModifica: [],
             categoria: [],
             descrizione: [],
             valore: [],
-            totale: 0
+            bilancio: 0
         };
 
         spese.forEach(item => {
             result.id.push(item.id);
             result.dataValuta.push(item.data);
+            result.dataInserimento.push(item.dataInserimento);
+            result.dataModifica.push(item.dataModifica);
             result.categoria.push(item.categoria);
             result.descrizione.push(item.descrizione || "");
             result.valore.push(item.importo);
-            result.totale += item.importo;
+            result.bilancio += item.importo;
         });
 
         entrate.forEach(item => {
             result.id.push(item.id);
             result.dataValuta.push(item.data);
+            result.dataInserimento.push(item.dataInserimento);
+            result.dataModifica.push(item.dataModifica);
             result.categoria.push(item.categoria);
             result.descrizione.push(item.descrizione || "");
             result.valore.push(item.importo);
-            result.totale += item.importo;
+            result.bilancio += item.importo;
         });
 
         // Creare un blob e farlo scaricare
@@ -519,6 +526,8 @@ function parseDataTabella(dataTabella) {
         transazioni.push({
             id: dataTabella.id[i],
             data: dataTabella.dataValuta[i],
+            dataInserimento: dataTabella.dataInserimento[i],
+            dataModifica: dataTabella.dataModifica[i],
             categoria: dataTabella.categoria[i],
             descrizione: dataTabella.descrizione[i],
             importo: dataTabella.valore[i]

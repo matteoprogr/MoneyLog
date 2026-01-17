@@ -1,7 +1,7 @@
 import { updateTrsLocal, saveTrsLocal, saveCategoria } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
-import { showErrorToast } from './main.js';
+import { showErrorToast, showToast } from './main.js';
 import { getCategorie, switchRichieste, replaceCat } from './queryDexie.js';
 import { categorieCreateComponent } from './main.js';
 import { getUser } from './main.js';
@@ -283,6 +283,7 @@ openBtn.addEventListener('click', async (e) => {
     overlay.classList.remove('showOverlay');
     createCriteri();
     form.reset();
+    showToast("Transazione aggiunta con successo", "success");
   } catch (err) {
     showErrorToast("Errore durante il salvataggio", "error");
   }

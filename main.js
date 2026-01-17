@@ -1,5 +1,5 @@
 import { queryTrns } from './queryDexie.js';
-import { deleteSpese } from './queryDexie.js';
+import { deleteSpese, saveDeletedTrs } from './queryDexie.js';
 import { updateRichieste } from './queryDexie.js';
 import { deleteCategorie } from './queryDexie.js';
 import { creaSpesaComponent } from './card.js';
@@ -843,47 +843,61 @@ function convertDDMMYYYYtoYYYYMMDD(str) {
 
 
 async function deleteSpesaBtn() {
-    const tab = recuperaTab();
-    let selectedCards;
-    if(!tab){
-        selectedCards = document.querySelectorAll('.spesa.spesaColor.selected');
-    }else if(tab){
-        selectedCards = document.querySelectorAll('.spesa.entrataColor.selected');
-    }
 
-    if (selectedCards.length === 0) {
-        showErrorToast("Seleziona almeno una riga da eliminare.","error");
-        return;
-    }
-
-    const criteri = [];
-    if (selectedCards.length > 0) {
-         selectedCards.forEach(card => {
-        if (card.getAttribute('datains') !== null) {
-            criteri.push(card.getAttribute('datains'));
+    try{
+        const tab = recuperaTab();
+        let selectedCards;
+        if(!tab){
+            selectedCards = document.querySelectorAll('.spesa.spesaColor.selected');
+        }else if(tab){
+            selectedCards = document.querySelectorAll('.spesa.entrataColor.selected');
         }
-    });
+
+        if (selectedCards.length === 0) {
+            showErrorToast("Seleziona almeno una riga da eliminare.","error");
+            return;
+        }
+
+        const criteri = [];
+        if (selectedCards.length > 0) {
+             selectedCards.forEach(card => {
+            if (card.getAttribute('datains') !== null) {
+                criteri.push(card.getAttribute('datains'));
+            }
+        });
+        }
+
+        if (criteri.length === 0) {
+            showErrorToast("Errore durante l'eliminazione.","error");
+            return;
+        }
+
+        await deleteSpese(criteri, tab);
+
+        const user = await getUser();
+        const tableName = tab === false ? "uscita" : "entrata";
+        isValid(user) && await Promise.all(criteri.map(date => deleteTrs(date, tableName)));
+
+        await saveDeletedTrs(criteri);
+
+        for (const card of selectedCards) {
+            const categoria = card.querySelector(".categoria");
+            const oldValue = categoria.innerText;
+            await updateRichieste(oldValue, "less");
+        }
+
+        if(criteri.length === 1){
+            showToast("Spesa eliminata con successo", "success");
+        } else {
+            showToast("Spese eliminate con successo", "success");
+        }
+
+        createCriteri();
+
+    }catch(error){
+        console.log(error);
     }
 
-    if (criteri.length === 0) {
-        showErrorToast("Errore durante l'eliminazione.","error");
-        return;
-    }
-
-    await deleteSpese(criteri, tab);
-for (const card of selectedCards) {
-    const categoria = card.querySelector(".categoria");
-    const oldValue = categoria.innerText;
-    await updateRichieste(oldValue, "less");
-}
-
-    if(criteri.length === 1){
-        showToast("Spesa eliminata con successo", "success");
-    } else {
-        showToast("Spese eliminate con successo", "success");
-    }
-
-    createCriteri();
 }
 
 

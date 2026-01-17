@@ -1,4 +1,4 @@
-import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
+import { isValid, showToast, showErrorToast, getSupaClient, checkAuth, getUser } from './main.js'
 import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie, deleteSpese, trsObject } from './queryDexie.js'
 
 // variabile globale client supabase
@@ -118,7 +118,8 @@ export async function syncDati() {
 
         showToast("Sincronizzazione completata ✅","succes");
     }catch(err){
-        showErrorToast("Errore durante la sincronizzazione dei dati","error")
+        showErrorToast("Errore durante la sincronizzazione dei dati","error");
+        console.log()"Errore durante la sincronizzazione dei dati", err);
     }finally{
         overlaySpinner.style.display = 'none';
     }

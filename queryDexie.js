@@ -64,6 +64,11 @@ export async function trsObject(trs, collectionName){
     }
 }
 
+export async function removeId(trsOb){
+    trsOb.id = null;
+    return trsOb
+}
+
 /////////////////   SALVATAGGIO TRANSAZIONI   ///////////////////////////
 export async function saveTrsLocal(trsOb, collectionName) {
   try {

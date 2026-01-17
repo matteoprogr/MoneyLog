@@ -1,4 +1,4 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
@@ -275,11 +275,11 @@ openBtn.addEventListener('click', async (e) => {
     if(!tab){
         trsOb = await trsObject(transazione, "spese");
         await saveTrsLocal(trsOb, "spese");
-        if(isValid(user)) await insertTrs(trsOb, "uscite");
+        if(isValid(user)) await insertTrs(await removeId(trsOb), "uscite");
     }else if(tab){
         trsOb = await trsObject(transazione, "entrate");
         await saveTrsLocal(trsOb, "entrate")
-        if(isValid(user)) await insertTrs(trsOb, "entrate");
+        if(isValid(user)) await insertTrs(await removeId(trsOb), "entrate");
     }
     await saveCategoria(trsOb.categoria);
 
@@ -462,11 +462,11 @@ export async function overlayEdit(spesa) {
         if(!tab){
             trsOb = await trsObject(transazione, "spese");
             await updateTrsLocal(trsOb, "spese");
-            if(isValid(user)) await updateTrs(trsOb, "uscite");
+            if(isValid(user)) await updateTrs(await removeId(trsOb), "uscite");
         }else if(tab){
             trsOb = await trsObject(transazione, "entrate");
             await updateTrsLocal(trsOb, "entrate");
-            if(isValid(user)) await updateTrs(trsOb, "entrate");
+            if(isValid(user)) await updateTrs(await removeId(trsOb), "entrate");
         }
         overlay.classList.remove('showOverlay');
         createCriteri();

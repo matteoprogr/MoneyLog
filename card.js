@@ -457,7 +457,7 @@ export async function overlayEdit(spesa) {
        const user = await getUser();
         if(!tab){
         await updateTrsLocal(transazione, "spese");
-        if(isValid(user)) await updateTrs(transazione, "uscita");
+        if(isValid(user)) await updateTrs(transazione, "uscite");
 
         }else if(tab){
         await updateTrsLocal(transazione, "entrate");

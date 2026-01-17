@@ -1,4 +1,4 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
@@ -271,14 +271,17 @@ openBtn.addEventListener('click', async (e) => {
 
   try {
     const user = await getUser();
+    let trsOb;
     if(!tab){
-        await saveTrsLocal(transazione, "spese");
-        if(isValid(user)) await insertTrs(transazione, "uscite");
+        trsOb = await trsObject(transazione, "spese");
+        await saveTrsLocal(trsOb, "spese");
+        if(isValid(user)) await insertTrs(trsOb, "uscite");
     }else if(tab){
-        await saveTrsLocal(transazione, "entrate")
-        if(isValid(user)) await insertTrs(transazione, "entrate");
+        trsOb = await trsObject(transazione, "entrate");
+        await saveTrsLocal(trsOb, "entrate")
+        if(isValid(user)) await insertTrs(trsOb, "entrate");
     }
-    await saveCategoria(transazione.categoria);
+    await saveCategoria(trsOb.categoria);
 
     overlay.classList.remove('showOverlay');
     createCriteri();
@@ -455,12 +458,15 @@ export async function overlayEdit(spesa) {
      };
     try {
         const user = await getUser();
+        let trsOb;
         if(!tab){
-            await updateTrsLocal(transazione, "spese");
-            if(isValid(user)) await updateTrs(transazione, "uscite");
+            trsOb = await trsObject(transazione, "spese");
+            await updateTrsLocal(trsOb, "spese");
+            if(isValid(user)) await updateTrs(trsOb, "uscite");
         }else if(tab){
-            await updateTrsLocal(transazione, "entrate");
-            if(isValid(user)) await updateTrs(transazione, "entrate");
+            trsOb = await trsObject(transazione, "entrate");
+            await updateTrsLocal(trsOb, "entrate");
+            if(isValid(user)) await updateTrs(trsOb, "entrate");
         }
         overlay.classList.remove('showOverlay');
         createCriteri();

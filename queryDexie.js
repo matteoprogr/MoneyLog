@@ -38,31 +38,39 @@ async function initCategorie(){
     await db.defaultCat.put({ inizializato: "init", done: true });
 }
 
+export async function trsObject(trs, collectionName){
+    try{
+        const id = trs.id;
+        const importo = collectionName === "spese" ? -Math.abs(trs.importo) : Math.abs(trs.importo);
+        const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
+        const categoria = capitalizeFirstLetter(trs.categoria);
+        const dataIns = isValid(trs.dataInserimento) ? trs.dataInserimento : new Date().toISOString();
+        const dataMod = isValid(trs.dataModifica) ? trs.dataModifica : new Date().toISOString();
+        const descrizione = await setDescrizione(trs.descrizione, categoria);
+
+        const trsOb = {
+          id: id,
+          descrizione: descrizione,
+          importo: importo,
+          categoria: categoria,
+          dataInserimento: dataIns,
+          dataModifica: dataMod,
+          data: fomattedISO
+        };
+
+        return trsOb;
+    }catch(err){
+        console.log("Errore durante mapping transazione", err);
+    }
+}
+
 /////////////////   SALVATAGGIO TRANSAZIONI   ///////////////////////////
-export async function saveTrsLocal(trs, collectionName) {
+export async function saveTrsLocal(trsOb, collectionName) {
   try {
     initDB();
     const collection = db[collectionName];
-
-    const importo = collectionName === "spese" ? -Math.abs(trs.importo) : Math.abs(trs.importo);
-    const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
-    const categoria = capitalizeFirstLetter(trs.categoria);
-    const dataIns = isValid(trs.dataInserimento) ? trs.dataInserimento : new Date().toISOString();
-    const dataMod = isValid(trs.dataModifica) ? trs.dataModifica : new Date().toISOString();
-    const descrizione = await setDescrizione(trs.descrizione, categoria);
-
-    const data = {
-      descrizione: descrizione,
-      importo: importo,
-      categoria: categoria,
-      dataInserimento: dataIns,
-      dataModifica: dataMod,
-      data: fomattedISO
-    };
-
     await sleep(1);
-    const id = await collection.add(data);
-
+    const id = await collection.add(trsOb);
 
     return { success: true, id };
   } catch (error) {
@@ -136,27 +144,15 @@ export function capitalizeFirstLetter(str) {
 
 
 ////////// UPDATE TRANSAZIONI ///////////////////
-export async function updateTrsLocal( trs, collectionName) {
+export async function updateTrsLocal(trsOb, collectionName) {
   try {
     initDB();
     const collection = db[collectionName];
-    if (!trs.id) {
+    if (!trsOb.id) {
       throw new Error("ID uscita mancante per la sostituzione");
     }
 
-    const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
-    const categoria = capitalizeFirstLetter(trs.categoria);
-    const data = {
-      id: trs.id,
-      descrizione: await setDescrizione(trs.descrizione,categoria),
-      dataInserimento: isValid(trs.dataInserimento) ? trs.dataInserimento : fomattedISO,
-      importo: -Math.abs(trs.importo),
-      categoria: categoria,
-      data: fomattedISO,
-      dataModifica: new Date().toISOString()
-    };
-
-    const id = await collection.put(data);
+    const id = await collection.put(trsOb);
     showToast("Transazione sostituita con successo", "success");
     return { success: true, id };
 
@@ -355,16 +351,18 @@ async function updateCatInTrns(oldCat, newCat){
     const newRecord = newCat.categoria;
     if(catSpese.length !== 0){
         for(const spesa of catSpese){
+            const trsOb = await trsObject(spesa, "spese");
             spesa.categoria = newRecord;
-            await updateTrsLocal(spesa,"spese");
+            await updateTrsLocal(trsOb,"spese");
             if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
             await updateRichieste(null, "more", newRecord);
         }
     }
     if(catEntrate.length !== 0){
         for(const entrata of catEntrate){
+            const trsOb = await trsObject(entrata, "entrate");
             entrata.categoria = newRecord;
-            await updateTrsLocal(entrata, "entrate");
+            await updateTrsLocal(trsOb, "entrate");
             if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
             await updateRichieste(null, "more", newRecord);
         }
@@ -500,13 +498,16 @@ async function importaDatabase(file) {
         const result = JSON.parse(fileContent);
         const transazioni = parseDataTabella(result);
 
-        for (const trns of transazioni) {
+        for (const trs of transazioni) {
+            let trsOb;
             if (trns.importo < 0) {
-                await saveTrsLocal(trns, "spese");
+                trsOb = await trsObject(trs, "spese");
+                await saveTrsLocal(trsOb, "spese");
             } else if (trns.importo > 0) {
-                await saveTrsLocal(trns, "entrate");
+                trsOb = await trsObject(trs, "entrate");
+                await saveTrsLocal(trsOb, "entrate");
             }
-            await saveCategoria(trns.categoria);
+            await saveCategoria(trsOb.categoria);
         }
 
         showToast("Importazione completata!", "success");

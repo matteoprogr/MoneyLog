@@ -1,5 +1,5 @@
 import { isValid, showToast, getSupaClient, checkAuth, getUser } from './main.js'
-import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie, deleteSpese } from './queryDexie.js'
+import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie, deleteSpese, trsObject } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -17,18 +17,12 @@ initSupabaseClient();
 // Metodo per inserimento Spese in supabase
 // Utilizzato id user presente in supabase nel salvattaggio della uscita
 // In caso di errore viene eseguito il log dell'errore e notificato all'utente tramite toast
-export async function insertTrs(trs, supaTable){
+export async function insertTrs(trsOb, supaTable){
     try{
         const { data, error } =
         await supabaseClient
             .from(supaTable)
-            .insert({
-                categoria: trs.categoria,
-                data: trs.data,
-                dataInserimento: trs.dataInserimento,
-                importo: trs.importo,
-                descrizione: trs.descrizione
-            });
+            .insert(trsOb);
         if(error) {
             console.log("Errore nel salvataggio", error);
         }
@@ -41,19 +35,13 @@ export async function insertTrs(trs, supaTable){
 
 }
 
-export async function updateTrs(trs, supaTable){
+export async function updateTrs(trsOb, supaTable){
     try{
         const { data, error } =
         await supabaseClient
             .from(supaTable)
-            .update({
-                categoria: trs.categoria,
-                data: trs.data,
-                dataInserimento: trs.dataInserimento,
-                dataModifica: trs.dataModifica,
-                importo: trs.importo,
-                descrizione: trs.descrizione
-            }).eq('dataInserimento', trs.dataInserimento);
+            .update(trsOb)
+            .eq('dataInserimento', trs.dataInserimento);
         if(error) {
             console.log("Errore nel salvataggio", error);
         }
@@ -205,13 +193,15 @@ async function syncCollection({ tableName, collectionName, bol }) {
     const local = localMap.get(key);
 
     if (!local) {
-      await saveTrsLocal(remote, collectionName);
-      await saveCategoria(remote.categoria);
+      const trsOb = await trsObject(remote, collectionName);
+      await saveTrsLocal(trsOb, collectionName);
+      await saveCategoria(trsOb.categoria);
     }
     else if (effectiveDate(remote) > effectiveDate(local)) {
        const localTrs = await getTrsByDataIns(collectionName, key);
        const remoteId = {...remote, id: localTrs.id };
-       await updateTrsLocal(remoteId, collectionName);
+       const trsOb = await trsObject(remoteId, collectionName);
+       await updateTrsLocal(trsOb, collectionName);
        const localCat = localTrs.categoria.trim();
        const remoteCat = remoteId.categoria.trim();
        if(localCat !== remoteCat) await switchRichieste(localCat, remoteCat);

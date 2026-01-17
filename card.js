@@ -467,6 +467,7 @@ export async function overlayEdit(spesa) {
          createCriteri();
        } catch (err) {
          showErrorToast("Errore durante la modifica:", "error");
+         console.log(err);
        }
     });
 }

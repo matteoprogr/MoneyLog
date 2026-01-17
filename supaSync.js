@@ -167,7 +167,7 @@ async function syncCollection({ tableName, collectionName, bol }) {
   const criteri = [];
   for (const [key, local] of localMap) {
     const remote = remoteMap.get(key);
-    if(remote.deleted) {
+    if(isValid(remote) && remote.deleted) {
         criteri.push(remote.dataInserimento);
         continue;
     }

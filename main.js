@@ -14,7 +14,7 @@ import { overlayEdit } from './card.js';
 import { recuperaTab } from './card.js';
 import { capitalizeFirstLetter } from './queryDexie.js';
 import { saveCategoria } from './queryDexie.js';
-import { syncDati } from './supaSync.js';
+import { syncDati, deleteTrs } from './supaSync.js';
 
 
 /////////  SERVICE WORKER ////////////////

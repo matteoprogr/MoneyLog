@@ -292,7 +292,7 @@ openBtn.addEventListener('click', async (e) => {
     if(!tab){
         trsOb = await trsObject(transazione, "uscite");
         await saveTrsLocal(trsOb, "uscite");
-        await saveRicorrenza(trsOb);
+        if(isValid(ricorrenza)) await saveRicorrenza(trsOb);
         if(isValid(user)) await insertTrs(await removeId(trsOb), "uscite");
     }else if(tab){
         trsOb = await trsObject(transazione, "entrate");

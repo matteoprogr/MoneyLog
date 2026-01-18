@@ -1,5 +1,6 @@
 import { isValid, showToast, showErrorToast, getSupaClient, checkAuth, getUser } from './main.js'
-import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns, saveCategoria, switchRichieste, getCategorie, deleteSpese, trsObject } from './queryDexie.js'
+import { queryTrns, saveTrsLocal, updateTrsLocal, getDeleted, deleteCheckedDeleted, getTrsByDataIns,
+         saveCategoria, switchRichieste, getCategorie, deleteSpese, trsObject, getRic } from './queryDexie.js'
 
 // variabile globale client supabase
 let supabaseClient = null;
@@ -111,6 +112,9 @@ export async function syncDati() {
         bol: false
         })
 
+
+        await syncRicorrente();
+
         showToast("Sincronizzazione completata ✅","succes");
     }catch(err){
         showErrorToast("Errore durante la sincronizzazione dei dati","error");
@@ -204,6 +208,24 @@ async function syncCollection({ tableName, bol }) {
     }
   }
 }
+
+async function syncRicorrente(){
+
+    try{
+        const trsRic = await getRic();
+        for(const trs of trsRic){
+            const { data, error } =
+            await supabaseClient.from("ricorrente").insert(trs);
+            if(error) {
+                console.log("Errore nel salvataggio", error);
+            }
+        }
+    }catch(err){
+        console.log("Errore durante sync ricorrenti", err);
+    }
+}
+
+
 
 
 async function checkDeleted(tableName){

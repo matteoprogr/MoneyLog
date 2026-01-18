@@ -86,9 +86,13 @@ export async function saveRicorrenza(trsOb){
     await db.ricorrenze.add(ricOb);
 }
 
+export async function getRic(){
+    return await db.ricorrenze.toArray();
+}
+
 export async function checkRicorrenze(){
     try{
-        const ricorrenti = await db.ricorrenze.toArray();
+        const ricorrenti = await getRic();
         const today = new Date();
 
         for(const trs of ricorrenti){

@@ -26,9 +26,6 @@ export async function insertTrs(trsOb, supaTable){
         if(error) {
             console.log("Errore nel salvataggio", error);
         }
-        if(data){
-
-        }
     }catch(error){
         console.error(error);
     }
@@ -105,14 +102,12 @@ export async function syncDati() {
         // ENTRATE
         await syncCollection({
         tableName: 'entrate',
-        collectionName: 'entrate',
         bol: true
         })
 
         // USCITE
         await syncCollection({
         tableName: 'uscite',
-        collectionName: 'spese',
         bol: false
         })
 
@@ -126,7 +121,7 @@ export async function syncDati() {
 }
 
 
-async function syncCollection({ tableName, collectionName, bol }) {
+async function syncCollection({ tableName, bol }) {
 
   // Recupero dati
   const localRecords = await queryTrns({}, bol);
@@ -183,7 +178,7 @@ async function syncCollection({ tableName, collectionName, bol }) {
     }
   }
   if(criteri.length > 0){
-    const tab = collectionName === "spese" ? false : true;
+    const tab = tableName === "uscite" ? false : true;
     await deleteSpese(criteri, tab);
   }
 
@@ -194,15 +189,15 @@ async function syncCollection({ tableName, collectionName, bol }) {
     const local = localMap.get(key);
 
     if (!local) {
-      const trsOb = await trsObject(remote, collectionName);
-      await saveTrsLocal(trsOb, collectionName);
+      const trsOb = await trsObject(remote, tableName);
+      await saveTrsLocal(trsOb, tableName);
       await saveCategoria(trsOb.categoria);
     }
     else if (effectiveDate(remote) > effectiveDate(local)) {
-       const localTrs = await getTrsByDataIns(collectionName, key);
+       const localTrs = await getTrsByDataIns(tableName, key);
        const remoteId = {...remote, id: localTrs.id };
-       const trsOb = await trsObject(remoteId, collectionName);
-       await updateTrsLocal(trsOb, collectionName);
+       const trsOb = await trsObject(remoteId, tableName);
+       await updateTrsLocal(trsOb, tableName);
        const localCat = localTrs.categoria.trim();
        const remoteCat = remoteId.categoria.trim();
        if(localCat !== remoteCat) await switchRichieste(localCat, remoteCat);

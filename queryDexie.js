@@ -13,11 +13,12 @@ export function initDB() {
   if (!db) {
     db = new Dexie('MoneyLogDB');
     db.version(1).stores({
-      spese: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo]',
+      uscite: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo], ricorrenteId',
       categorie: '&categoria',
-      entrate: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo]',
+      entrate: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo], ricorrenteId',
       defaultCat: 'inizializato',
-      deletedTrs: '++id'
+      deletedTrs: '++id',
+      ricorrenze: 'ricorrenteId, *categoria, importo, data',
     });
 
     initCategorie();
@@ -40,13 +41,15 @@ async function initCategorie(){
 
 export async function trsObject(trs, collectionName){
     try{
+        const oggi = new Date().toISOString();
         const id = trs.id;
-        const importo = collectionName === "spese" ? -Math.abs(trs.importo) : Math.abs(trs.importo);
+        const importo = collectionName === "uscite" ? -Math.abs(trs.importo) : Math.abs(trs.importo);
         const fomattedISO = new Date(trs.data).toISOString().split('T')[0];
         const categoria = capitalizeFirstLetter(trs.categoria);
-        const dataIns = isValid(trs.dataInserimento) ? trs.dataInserimento : new Date().toISOString();
-        const dataMod = isValid(trs.dataModifica) ? trs.dataModifica : new Date().toISOString();
+        const dataIns = isValid(trs.dataInserimento) ? trs.dataInserimento : oggi;
+        const dataMod = isValid(trs.dataModifica) ? trs.dataModifica : oggi;
         const descrizione = await setDescrizione(trs.descrizione, categoria);
+        const ricorrenteId = trs.ricorrenteId;
 
         const trsOb = {
           id: id,
@@ -55,7 +58,8 @@ export async function trsObject(trs, collectionName){
           categoria: categoria,
           dataInserimento: dataIns,
           dataModifica: dataMod,
-          data: fomattedISO
+          data: fomattedISO,
+          ricorrenteId: ricorrenteId
         };
 
         return trsOb;
@@ -68,6 +72,66 @@ export async function removeId(trsOb){
     delete trsOb.id;
     return trsOb
 }
+
+export async function saveRicorrenza(trsOb){
+    initDB();
+    const ricOb = {
+      descrizione: trsOb.descrizione,
+      importo: trsOb.importo,
+      categoria: trsOb.categoria,
+      data: trsOb.data,
+      ricorrenteId: trsOb.ricorrenteId
+    };
+
+    await db.ricorrenze.add(ricOb);
+}
+
+export async function checkRicorrenze(){
+    try{
+        const ricorrenti = await db.ricorrenze.toArray();
+        const today = new Date();
+
+        for(const trs of ricorrenti){
+            const split = trs.ricorrenteId.split('%');
+            const periodo =
+                split[0] === "mensile" ? 1 :
+                split[0] === "trimestrale" ? 3 :
+                split[0] === "annuale" ? 12 :
+                null;
+
+            const currentDate = new Date(trs.data);
+
+            for(let date = currentDate; date < today;  date = addMonths(date, periodo)){
+                const dataObject = date.toISOString().split('T')[0];
+                const criteri = {
+                  dataInizio: dataObject,
+                  dataFine: dataObject,
+                  importoMin: trs.importo,
+                  importoMax: trs.importo,
+                  categoria: trs.categoria
+                };
+                const exists = await queryTrns(criteri, false);
+                if(exists.length > 0) continue;
+                const tableName = trs.importo > 0 ? "entrate" : "uscite";
+                const ricTrs = { ...trs, data: dataObject };
+                const trsOb = await trsObject(ricTrs, tableName);
+                await saveTrsLocal(trsOb, tableName);
+                const user = await getUser();
+                if(isValid(user)) await insertTrs(trsOb, tableName);
+            }
+        }
+    }catch(err){
+        console.log("Errore nel salvataggio transazione ricorrente", err);
+    }
+
+}
+
+function addMonths(date, months) {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
 
 /////////////////   SALVATAGGIO TRANSAZIONI   ///////////////////////////
 export async function saveTrsLocal(trsOb, collectionName) {
@@ -172,7 +236,7 @@ export async function updateTrsLocal(trsOb, collectionName) {
 /////////////////  RICERCA ///////////////////////
 export async function queryTrns(criteri = {}, tabActive) {
   initDB();
-  const collezione = tabActive ? db.entrate : db.spese;
+  const collezione = tabActive ? db.entrate : db.uscite;
 
     if (Object.keys(criteri).length === 0) {
       return collezione.toArray();
@@ -242,7 +306,7 @@ export async function deleteSpese(criteri = {}, tabActive) {
 
     let collezione;
     if(!tabActive){
-        collezione = db.spese.toCollection();
+        collezione = db.uscite.toCollection();
 
     }else if(tabActive){
         collezione = db.entrate.toCollection();
@@ -356,9 +420,9 @@ async function updateCatInTrns(oldCat, newCat){
     const newRecord = newCat.categoria;
     if(catSpese.length !== 0){
         for(const spesa of catSpese){
-            const trsOb = await trsObject(spesa, "spese");
+            const trsOb = await trsObject(spesa, "uscite");
             spesa.categoria = newRecord;
-            await updateTrsLocal(trsOb,"spese");
+            await updateTrsLocal(trsOb,"uscite");
             if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
             await updateRichieste(null, "more", newRecord);
         }
@@ -505,10 +569,10 @@ async function importaDatabase(file) {
 
         for (const trs of transazioni) {
             let trsOb;
-            if (trns.importo < 0) {
-                trsOb = await trsObject(trs, "spese");
-                await saveTrsLocal(trsOb, "spese");
-            } else if (trns.importo > 0) {
+            if (trs.importo < 0) {
+                trsOb = await trsObject(trs, "uscite");
+                await saveTrsLocal(trsOb, "uscite");
+            } else if (trs.importo > 0) {
                 trsOb = await trsObject(trs, "entrate");
                 await saveTrsLocal(trsOb, "entrate");
             }

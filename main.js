@@ -1,5 +1,5 @@
 import { queryTrns } from './queryDexie.js';
-import { deleteSpese, saveDeletedTrs } from './queryDexie.js';
+import { deleteSpese, saveDeletedTrs, checkRicorrenze } from './queryDexie.js';
 import { updateRichieste } from './queryDexie.js';
 import { deleteCategorie } from './queryDexie.js';
 import { creaSpesaComponent } from './card.js';
@@ -114,6 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
     overlayAddSpesa();
     overlayRicerca();
     setDateRange();
+    checkRicorrenze();
     let container = document.querySelector('.movimenti-container');
     let containerGraph = document.querySelector('.movimenti-container.graph');
     let tabs = document.querySelectorAll('.movimenti-tabs .tab');
@@ -887,9 +888,9 @@ async function deleteSpesaBtn() {
         }
 
         if(criteri.length === 1){
-            showToast("Spesa eliminata con successo", "success");
+            showToast("Uscita eliminata con successo", "success");
         } else {
-            showToast("Spese eliminate con successo", "success");
+            showToast("Uscite eliminate con successo", "success");
         }
 
         createCriteri();

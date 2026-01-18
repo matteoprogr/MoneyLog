@@ -1,4 +1,4 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId, saveRicorrenza } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
@@ -218,7 +218,9 @@ const closeBtn = document.getElementById('closeFormBtn');
 const importo = document.getElementById('importo');
 const descrizione = document.getElementById('descrizione');
 const data = document.getElementById('data');
-
+const slider = document.getElementById('ricorrente');
+const ric = document.getElementById('ricorrente-card-add');
+let ricorrenza;
 
 openBtn.addEventListener('click', async (e) => {
     if (overlay.classList.contains('showOverlay')) {
@@ -229,9 +231,21 @@ openBtn.addEventListener('click', async (e) => {
         overlay.classList.toggle("showOverlay");
         const categorie = await getCategorie();
         categorie.forEach(cat => {
-        const card = catOverlay(cat.categoria, "addSpesa", null);
-        catRow.appendChild(card);
-        data.value = new Date().toISOString().split("T")[0];
+            const card = catOverlay(cat.categoria, "addSpesa", null);
+            catRow.appendChild(card);
+            data.value = new Date().toISOString().split("T")[0];
+        });
+        slider.addEventListener('click', async (e) =>{
+            if (slider.checked) {
+                ric.innerHTML = "";
+                const periodi = ["mensile", 'trimestrale', 'annuale'];
+                periodi.forEach( p => {
+                    const card = cardRic(p);
+                    ric.appendChild(card);
+                });
+            }else{
+                ric.innerHTML = "";
+            }
         });
     }
      document.addEventListener('click', (event) => {
@@ -259,37 +273,41 @@ openBtn.addEventListener('click', async (e) => {
     });
 
     form.addEventListener('submit', async (e) => {
-      const tab = recuperaTab();
-      e.preventDefault();
-      const transazione = {
-        categoria: categoriaInput.value.trim(),
-        data: data.value,
-        importo: parseFloat(importo.value),
-        descrizione: descrizione.value
-      };
+        e.preventDefault();
+        const tab = recuperaTab();
+        const r = document.querySelector('.ric.selectedRic');
+        ricorrenza = isValid(r) ? (r.innerText) + '%' + crypto.randomUUID()  : null;
+        const transazione = {
+            categoria: categoriaInput.value.trim(),
+            data: data.value,
+            importo: parseFloat(importo.value),
+            descrizione: descrizione.value,
+            ricorrenteId: ricorrenza
+     };
 
 
-  try {
-    const user = await getUser();
-    let trsOb;
+    try {
+        const user = await getUser();
+        let trsOb;
     if(!tab){
-        trsOb = await trsObject(transazione, "spese");
-        await saveTrsLocal(trsOb, "spese");
+        trsOb = await trsObject(transazione, "uscite");
+        await saveTrsLocal(trsOb, "uscite");
+        await saveRicorrenza(trsOb);
         if(isValid(user)) await insertTrs(await removeId(trsOb), "uscite");
     }else if(tab){
         trsOb = await trsObject(transazione, "entrate");
         await saveTrsLocal(trsOb, "entrate")
         if(isValid(user)) await insertTrs(await removeId(trsOb), "entrate");
     }
-    await saveCategoria(trsOb.categoria);
-
-    overlay.classList.remove('showOverlay');
-    createCriteri();
-    form.reset();
-    showToast("Transazione aggiunta con successo", "success");
-  } catch (err) {
-    showErrorToast("Errore durante il salvataggio", "error");
-  }
+        await saveCategoria(trsOb.categoria);
+        overlay.classList.remove('showOverlay');
+        createCriteri();
+        form.reset();
+        showToast("Transazione aggiunta con successo", "success");
+    } catch (err) {
+        showErrorToast("Errore durante il salvataggio", "error");
+        console.log("Errore durante il salvataggio", err);
+    }
  });
 }
 
@@ -358,6 +376,21 @@ export async function overlayRicerca() {
           catRow.replaceChildren(fragment);
         });
   }
+
+function cardRic(periodo){
+    const container = document.createElement("div");
+    container.classList.add("ric");
+    container.innerHTML = `
+        <div>
+            <span> ${periodo} </span>
+        </div>
+    `;
+    container.addEventListener("click", () => {
+        container.classList.toggle("selectedRic");
+    });
+
+    return container;
+}
 
 function catOverlay(categoria, sezione, selectedCards) {
     const container = document.createElement("div");
@@ -452,6 +485,7 @@ export async function overlayEdit(spesa) {
         id: parseInt(document.getElementById('editSpesaId').value),
         categoria: formCategoria,
         dataInserimento: dataInserimento,
+        dataModifica: new Date().toISOString(),
         data: document.getElementById('editData').value,
         importo: parseFloat(document.getElementById('editImporto').value),
         descrizione: document.getElementById('editDescrizione').value
@@ -460,8 +494,8 @@ export async function overlayEdit(spesa) {
         const user = await getUser();
         let trsOb;
         if(!tab){
-            trsOb = await trsObject(transazione, "spese");
-            await updateTrsLocal(trsOb, "spese");
+            trsOb = await trsObject(transazione, "uscite");
+            await updateTrsLocal(trsOb, "uscite");
             if(isValid(user)) await updateTrs(await removeId(trsOb), "uscite");
         }else if(tab){
             trsOb = await trsObject(transazione, "entrate");

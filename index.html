@@ -80,6 +80,14 @@
             </div>
             <div class="input-group">
                 <input type="text" id="descrizione" maxlength="45" placeholder="Descrizione">
+                <div class="ricorrenza-box">
+                    <span class="ricorrenza-label">Ricorrente 🔁</span>
+                    <label class="switch">
+                        <input type="checkbox" id="ricorrente">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="ricorrente-card-add" class="ric-cards"></div>
             </div>
             <div class="button-group row">
                 <button class="overlayButton"  type="submit">Salva</button>
@@ -121,6 +129,14 @@
             </div>
             <div class="input-group">
                 <input type="text" id="editDescrizione" maxlength="35" placeholder="Descrizione">
+                <div class="ricorrenza-box">
+                    <span class="ricorrenza-label">Ricorrente 🔁</span>
+                    <label class="switch">
+                        <input type="checkbox" id="ricorrenteUpdate">
+                        <span class="slider"></span>
+                    </label>
+                    <div id="ricorrente-card-upd"></div>
+                </div>
             </div>
             <div class="button-group row">
                 <button class="overlayButton"  type="submit">Salva</button>
@@ -248,7 +264,7 @@
     </div>
 
     <div class="info-section">
-        <p class="countTrs">v.1.0.1</p>
+        <p class="countTrs">v.1.0.2</p>
         <p>
             Con <strong>MoneyLog</strong> puoi avere sempre sotto controllo le tue entrate e uscite quotidiane, senza complicazioni e con la massima attenzione alla privacy.
             L’app non salva alcun dato al di fuori del tuo dispositivo. Tutto rimane solo a te.

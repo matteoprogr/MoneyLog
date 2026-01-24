@@ -86,6 +86,40 @@ export async function saveRicorrenza(trsOb){
     await db.ricorrenze.add(ricOb);
 }
 
+export async function updatePeriodo(trsOb, ricorrenteId, periodoPrecedente){
+    initDB();
+    const split = ricorrenteId.split("%");
+    const oldRicorrenteId = periodoPrecedente + "%" + split[1];
+    if(getRicById(oldRicorrenteId))await deleteRicorrenza(oldRicorrenteId);
+    await saveRicorrenza(trsOb);
+}
+
+export async function updateRicorrenza(trsOb){
+    initDB();
+    const ricOb = {
+      descrizione: trsOb.descrizione,
+      importo: trsOb.importo,
+      categoria: trsOb.categoria,
+      data: trsOb.data,
+      ricorrenteId: trsOb.ricorrenteId
+    };
+
+    await db.ricorrenze.put(ricOb);
+}
+
+export async function deleteRicorrenza(ricorrenteId){
+    try{
+        initDB();
+        await db.ricorrenze.delete(ricorrenteId);
+    }catch(err){
+        console.log(err);
+    }
+}
+
+export async function getRicById(id){
+    return await db.ricorrenze.get(id);
+}
+
 export async function getRic(){
     return await db.ricorrenze.toArray();
 }

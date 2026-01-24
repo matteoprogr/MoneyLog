@@ -1,4 +1,4 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId, saveRicorrenza } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId, saveRicorrenza, updateRicorrenza, deleteRicorrenza, updatePeriodo } from './queryDexie.js';
 import { createCriteri } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
@@ -228,6 +228,7 @@ openBtn.addEventListener('click', async (e) => {
         form.reset();
     } else {
         catRow.innerHTML = "";
+        ric.innerHTML = "";
         overlay.classList.toggle("showOverlay");
         const categorie = await getCategorie();
         categorie.forEach(cat => {
@@ -236,16 +237,7 @@ openBtn.addEventListener('click', async (e) => {
             data.value = new Date().toISOString().split("T")[0];
         });
         slider.addEventListener('click', async (e) =>{
-            if (slider.checked) {
-                ric.innerHTML = "";
-                const periodi = ["mensile", 'trimestrale', 'annuale'];
-                periodi.forEach( p => {
-                    const card = cardRic(p);
-                    ric.appendChild(card);
-                });
-            }else{
-                ric.innerHTML = "";
-            }
+            ricComponent(slider, null, ric);
         });
     }
      document.addEventListener('click', (event) => {
@@ -283,24 +275,24 @@ openBtn.addEventListener('click', async (e) => {
             importo: parseFloat(importo.value),
             descrizione: descrizione.value,
             ricorrenteId: ricorrenza
-     };
+        };
 
 
     try {
+        overlay.classList.remove('showOverlay');
         const user = await getUser();
         let trsOb;
     if(!tab){
         trsOb = await trsObject(transazione, "uscite");
         await saveTrsLocal(trsOb, "uscite");
-        if(isValid(ricorrenza)) await saveRicorrenza(trsOb);
-        if(isValid(user)) await insertTrs(await removeId(trsOb), "uscite");
+        if(isValid(user)) insertTrs(await removeId(trsOb), "uscite");
     }else if(tab){
         trsOb = await trsObject(transazione, "entrate");
-        await saveTrsLocal(trsOb, "entrate")
-        if(isValid(user)) await insertTrs(await removeId(trsOb), "entrate");
+        saveTrsLocal(trsOb, "entrate")
+        if(isValid(user)) insertTrs(await removeId(trsOb), "entrate");
     }
-        await saveCategoria(trsOb.categoria);
-        overlay.classList.remove('showOverlay');
+        if(isValid(ricorrenza)) saveRicorrenza(trsOb);
+        saveCategoria(trsOb.categoria);
         createCriteri();
         form.reset();
         showToast("Transazione aggiunta con successo", "success");
@@ -377,15 +369,22 @@ export async function overlayRicerca() {
         });
   }
 
-function cardRic(periodo){
+function cardRic(periodo, selected){
     const container = document.createElement("div");
     container.classList.add("ric");
+    if(isValid(selected) && selected === periodo) container.classList.add("selectedRic");
     container.innerHTML = `
         <div>
-            <span> ${periodo} </span>
+            <span> ${periodo}</span>
         </div>
     `;
     container.addEventListener("click", () => {
+        const r = document.querySelectorAll('.ric.selectedRic');
+        if(isValid(r)) {
+            r.forEach(item => {
+                item.classList.remove("selectedRic");
+            })
+        }
         container.classList.toggle("selectedRic");
     });
 
@@ -429,6 +428,25 @@ function catOverlay(categoria, sezione, selectedCards) {
     return container;
 }
 
+function ricComponent(slider, ricorrenza, ric){
+    let pSelected = null;
+    if (slider.checked) {
+        if(isValid(ricorrenza)) {
+            const split = ricorrenza.split('%');
+            pSelected = split[0];
+        }
+
+        ric.innerHTML = "";
+        const periodi = ["mensile", 'trimestrale', 'annuale'];
+        periodi.forEach( p => {
+            const card = cardRic(p, pSelected);
+            ric.appendChild(card);
+        });
+    }else{
+        ric.innerHTML = "";
+    }
+}
+
 export async function overlayEdit(spesa) {
     const overlay = document.getElementById('editSpesaFormOverlay');
     const catRow = document.getElementById('categorieCardsEdit');
@@ -443,10 +461,24 @@ export async function overlayEdit(spesa) {
     document.getElementById('editData').value = spesa.data;
     document.getElementById('editImporto').value = Math.abs(spesa.importo);
     document.getElementById('editDescrizione').value = spesa.descrizione;
+    const slider = document.getElementById('ricorrenteUpdate');
+    const ric = document.getElementById('ricorrente-card-upd');
+    let ricorrenza = spesa.ricorrenteId;
+    let pSaved = null;
+    if(isValid(ricorrenza)) {
+        slider.checked = true;
+        const split = ricorrenza.split('%');
+        pSaved = split[0];
+    }else{
+        slider.checked = false;
+    }
+
 
     closeBtn.addEventListener('click',async () =>{
         overlay.classList.remove('showOverlay');
     });
+
+    ricComponent(slider, ricorrenza, ric);
 
     catRow.innerHTML = "";
     overlay.classList.add("showOverlay");
@@ -455,6 +487,11 @@ export async function overlayEdit(spesa) {
     const card = catOverlay(cat.categoria, "editSpesa", null);
     catRow.appendChild(card);
     });
+
+    slider.addEventListener('click', async (e) =>{
+        ricComponent(slider, ricorrenza, ric);
+    });
+
     document.addEventListener('click', (event) => {
         if (!overlay.classList.contains('showOverlay')) return;
         if (event.target.closest('#editSpesaFormOverlay')) return;
@@ -477,7 +514,18 @@ export async function overlayEdit(spesa) {
     form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formCategoria = categoriaElement.value;
-    if(oldCategoria !== formCategoria)  await switchRichieste(oldCategoria, formCategoria);
+    const r = document.querySelector('.ric.selectedRic');
+    const pUpdated = isValid(r) ? (r.innerText) : null;
+    if(pSaved !== pUpdated) {
+        if(isValid(ricorrenza)){
+            const array = ricorrenza.split("%");
+            ricorrenza = pUpdated + "%" + array[1];
+        }else{
+            ricorrenza = pUpdated + '%' + crypto.randomUUID();
+        }
+
+    }
+    if(oldCategoria !== formCategoria) switchRichieste(oldCategoria, formCategoria);
 
     const tab = recuperaTab();
 
@@ -488,21 +536,29 @@ export async function overlayEdit(spesa) {
         dataModifica: new Date().toISOString(),
         data: document.getElementById('editData').value,
         importo: parseFloat(document.getElementById('editImporto').value),
-        descrizione: document.getElementById('editDescrizione').value
+        descrizione: document.getElementById('editDescrizione').value,
+        ricorrenteId: slider.checked ? ricorrenza : null
      };
     try {
+        overlay.classList.remove('showOverlay');
         const user = await getUser();
         let trsOb;
         if(!tab){
             trsOb = await trsObject(transazione, "uscite");
             await updateTrsLocal(trsOb, "uscite");
-            if(isValid(user)) await updateTrs(await removeId(trsOb), "uscite");
+            if(isValid(user)) updateTrs(await removeId(trsOb), "uscite");
         }else if(tab){
             trsOb = await trsObject(transazione, "entrate");
             await updateTrsLocal(trsOb, "entrate");
-            if(isValid(user)) await updateTrs(await removeId(trsOb), "entrate");
+            if(isValid(user)) updateTrs(await removeId(trsOb), "entrate");
         }
-        overlay.classList.remove('showOverlay');
+
+        if(isValid(ricorrenza)){
+            if(slider.checked && pSaved === pUpdated) updateRicorrenza(trsOb);
+            if(!slider.checked) deleteRicorrenza(ricorrenza);
+            if(pSaved !== pUpdated) updatePeriodo(trsOb, ricorrenza, pSaved);
+        }
+
         createCriteri();
     } catch (err) {
         showErrorToast("Errore durante la modifica:", "error");

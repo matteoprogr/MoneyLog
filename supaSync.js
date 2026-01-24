@@ -30,7 +30,6 @@ export async function insertTrs(trsOb, supaTable){
     }catch(error){
         console.error(error);
     }
-
 }
 
 export async function updateTrs(trsOb, supaTable){

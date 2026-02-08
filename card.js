@@ -280,7 +280,7 @@ export function compBudget(budget){
                 <span class="budget-progress-label">${budget.periodo}</span>
             </div>
             <div class="budget-progress-header">
-                <span class="budget-progress-usato">${budget.usato.toFixed(2)}</span>
+                <span class="budget-progress-usato">${budget.usato.toFixed(0)}</span>
                 <span class="budget-progress-perc">${budget.destinato}</span>
             </div>
             <div class="budget-progress-bar-track">

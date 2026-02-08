@@ -19,6 +19,7 @@ export function initDB() {
       defaultCat: 'inizializato',
       deletedTrs: '++id',
       ricorrenze: 'ricorrenteId, *categoria, importo, data',
+      budget: 'budgetId, *categoria, periodo,  usato, destinato, data',
     });
 
     initCategorie();
@@ -161,7 +162,53 @@ export async function checkRicorrenze(){
     }catch(err){
         console.log("Errore nel salvataggio transazione ricorrente", err);
     }
+}
 
+
+
+export async function checkRicorrenzeBudgetMensile(){
+    const periodo = "mensile";
+    const budgets = await getBudgetsByPeriodo(periodo);
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0–11
+
+    const dataInizio = formatDateYMD(new Date(year, month, 1));
+    const dataFine   = formatDateYMD(new Date(year, month + 1, 0));
+
+    for (const budget of budgets) {
+        const budgetData = await getBudgets(dataInizio, dataFine, budget.categoria, periodo);
+
+        if (budgetData.length > 0) continue;
+
+        budget.budgetId = crypto.randomUUID();
+        createBudget(budget);
+    }
+}
+
+
+export async function checkRicorrenzeBudgetAnnuale(){
+    const periodo = "annuale";
+    const budgets = await getBudgetsByPeriodo(periodo);
+    const year = new Date().getFullYear();
+    const dataInizio = formatDateYMD(new Date(year, 0, 1));
+    const dataFine   = formatDateYMD(new Date(year, 11, 31));
+
+    for(const budget of budgets){
+        const budgetData = await getBudgets(dataInizio, dataFine, budget.categoria, periodo);
+        if(budgetData.length > 0) continue;
+        budget.budgetId = crypto.randomUUID();
+        createBudget(budget);
+    }
+}
+
+function formatDateYMD(date) {
+  const year  = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day   = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function addMonths(date, months) {
@@ -222,16 +269,17 @@ async function initSaveCategoria(categoria){
     await db.categorie.add({ categoria: categoria, richieste: 0 });
 }
 
-export async function saveCategoria(categoria) {
+export async function saveCategoria(categoria, richiesta) {
   const categoriaLower = categoria.toLowerCase().trim();
   const categoriaCapitalized = capitalizeFirstLetter(categoriaLower);
+  richiesta = richiesta === 0 ? 0 : 1
   try {
 
     const cat = await db.categorie.get(categoriaCapitalized);
     if(!isValid(cat)){
     await db.categorie.add({
         categoria: categoriaCapitalized,
-        richieste: 1
+        richieste: richiesta
          });
     }else{
         updateRichieste(null, "more", cat);
@@ -644,4 +692,178 @@ function parseDataTabella(dataTabella) {
     return transazioni;
 }
 
+
+/////////// CRUD BUDGET //////////////////////
+
+/**
+ * CREATE - Crea un nuovo budget
+ * @param {Object} budgetData - Dati del budget {categoria, descrizione, periodo, destinato}
+ * @returns {Object} - {success: boolean, budgetId: string}
+ */
+export async function createBudget(budgetData) {
+  try {
+    initDB();
+    const budgetId = budgetData.budgetId;
+    const budgetOb = {
+      budgetId: budgetId,
+      categoria: capitalizeFirstLetter(budgetData.categoria),
+      periodo: budgetData.periodo,
+      data: budgetData.data,
+      usato: budgetData.usato || 0,
+      destinato: budgetData.destinato || 0
+    };
+
+    await db.budget.add(budgetOb);
+
+    return { success: true, budgetId };
+  } catch (error) {
+    console.error('Errore durante la creazione del budget:', error);
+    showErrorToast('Errore durante la creazione del budget', "error");
+    return { success: false, error };
+  }
+}
+
+
+/**
+ * READ - Legge budget filtrati per categoria
+ * @param {string|Array} categoria - Categoria o array di categorie
+ * @returns {Array} - Array di budget filtrati
+ */
+export async function getBudgetsByCategoria(categoria) {
+  try {
+    initDB();
+
+    if (Array.isArray(categoria)) {
+      return await db.budget
+        .where('categoria')
+        .anyOf(categoria)
+        .toArray();
+    } else {
+      return await db.budget
+        .where('categoria')
+        .equals(capitalizeFirstLetter(categoria))
+        .toArray();
+    }
+  } catch (error) {
+    console.error('Errore durante la lettura dei budget per categoria:', error);
+    return [];
+  }
+}
+
+/**
+ * READ - Legge budget filtrati per periodo
+ * @param {string} periodo - Periodo (es: "mensile", "annuale")
+ * @returns {Array} - Array di budget filtrati
+ */
+export async function getBudgetsByPeriodo(periodo) {
+  try {
+    initDB();
+    return await db.budget
+      .where('periodo')
+      .equals(periodo)
+      .toArray();
+  } catch (error) {
+    console.error('Errore durante la lettura dei budget per periodo:', error);
+    return [];
+  }
+}
+
+
+export async function getBudgetsByData(startDate, endDate) {
+  try {
+    initDB();
+    return await db.budget
+      .where('data')
+      .between(startDate, endDate, true, true)
+      .toArray();
+  } catch (error) {
+    console.error('Errore durante la lettura dei budget per data:', error);
+    return [];
+  }
+}
+
+export async function getBudgets(startDate, endDate, categoria, periodo) {
+    try {
+        initDB();
+
+        let query = db.budget.toCollection();
+
+        if (startDate && endDate) {
+          query = db.budget
+            .where('data')
+            .between(startDate, endDate, true, true);
+        }
+
+        if (categoria) {
+          query = query.filter(b => b.categoria === categoria);
+        }
+
+        if (periodo) {
+          query = query.filter(b => b.periodo === periodo);
+        }
+
+        return await query.toArray();
+    } catch (error) {
+        console.error('Errore durante la lettura dei budget:', error);
+        return [];
+    }
+}
+
+
+export async function updateBudget(budget) {
+  try {
+    initDB();
+
+    const budgetId = budget.budgetId;
+    if (!budget) {
+      return { success: false, error: 'Budget non trovato' };
+    }
+
+    const data = budget.data;
+    const periodo = budget.periodo;
+    const destinato = budget.destinato;
+    const categoria = budget.categoria;
+
+    const bgt = {
+        budgetId: budgetId,
+        usato: 0,
+        data: data,
+        periodo: periodo,
+        destinato: destinato,
+        categoria: categoria
+    };
+    await db.budget.put(bgt)
+
+    return { success: true };
+  } catch (error) {
+    console.error('Errore durante l\'aggiornamento dell\'importo usato:', error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * DELETE - Elimina un budget
+ * @param {string} budgetId - ID del budget da eliminare
+ * @returns {Object} - {success: boolean}
+ */
+export async function deleteBudget(budgetId) {
+  try {
+    initDB();
+
+    const budget = await db.budget.get(budgetId);
+    if (!budget) {
+      showErrorToast('Budget non trovato', "error");
+      return { success: false, error: 'Budget non trovato' };
+    }
+
+    await db.budget.delete(budgetId);
+    showToast('Budget eliminato con successo', "success");
+
+    return { success: true };
+  } catch (error) {
+    console.error('Errore durante l\'eliminazione del budget:', error);
+    showErrorToast('Errore durante l\'eliminazione del budget', "error");
+    return { success: false, error };
+  }
+}
 

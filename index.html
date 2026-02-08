@@ -32,6 +32,7 @@
     <div class="nav-links">
         <a href="#" data-target="movimenti">Movimenti</a>
         <a href="#" data-target="grafici">Grafici</a>
+        <a href="#" data-target="budget">Budget</a>
         <a href="#" data-target="impostazioni">Impostazioni</a>
         <a href="#" data-target="categorie-section">Categorie</a>
         <a href="#" data-target="info">Info</a>
@@ -72,7 +73,7 @@
         <form id="spesaForm">
             <div class="input-group">
                 <input type="text" id="categoria"  maxlength="25" placeholder="Seleziona o inserisci una categoria..."  required>
-            <div class="categorie-cards" id="categorieCardsAdd"></div>
+                <div class="categorie-cards" id="categorieCardsAdd"></div>
             </div>
             <div class="input-group row">
                 <input class="importoOverlay" type="date" id="data" required>
@@ -185,6 +186,80 @@
 </section>
 
 
+<!-- Pagina Budget //////////////////////////////////////////////////////////////-->
+<section id="budget" class="page-section">
+    <div class="sticky-bar bodyBackground">
+        <h2>Budget</h2>
+        <div class="input-group row">
+            <button class="frecciaBtn" type="button" id="indietroBudget"> &lt; </button>
+            <input type="text" id="date-range-budget" readonly>
+            <button class="frecciaBtn" type="button" id="avantiBudget"> &gt; </button>
+        </div>
+    </div>
+
+    <div class="budget-wrapper">
+        <div id="budget-lista"></div>
+    </div>
+
+    <div class="fullscreenBtnContainer">
+        <button class="fullscreenBtn" id="addBudgetBtn">➕</button>
+        <button class="fullscreenBtn" id="deleteBudgetBtn">🗑️</button>
+    </div>
+
+    <!-- OVERLAY: inserisci budget -->
+    <div id="budgetFormOverlay">
+        <form id="budgetForm">
+            <div class="input-group">
+                <input type="text" id="budgetCategoria" maxlength="25" placeholder="Seleziona o inserisci una categoria..." required>
+                <div class="categorie-cards" id="categorieCardsBudget"></div>
+            </div>
+            <div class="input-group">
+                <input class="importoBudget" type="number" step="0.01" id="budgetImporto" placeholder="Importo" required>
+                <div class="ricorrenza-box">
+                    <span class="ricorrenza-label">Ricorrente 🔁</span>
+                    <label class="switch">
+                        <input type="checkbox" id="ricBudget">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="periodo-budget-add" class="ric-cards"></div>
+            </div>
+
+            <div class="button-group row">
+                <button class="overlayButton" type="submit">Salva</button>
+                <button class="overlayButton" type="button" id="closeBudgetFormBtn">Annulla</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- OVERLAY: modifica budget -->
+    <div id="budgetFormOverlayEdit">
+        <form id="budgetFormEdit">
+            <div class="input-group">
+                <input type="text" id="budgetCategoriaEdit" maxlength="25" placeholder="Seleziona o inserisci una categoria..." required>
+                <div class="categorie-cards" id="categorieCardsBudgetEdit"></div>
+            </div>
+            <div class="input-group">
+                <input class="importoBudget" type="number" step="0.01" id="budgetImportoEdit" placeholder="Importo" required>
+                <div class="ricorrenza-box">
+                    <span class="ricorrenza-label">Ricorrente 🔁</span>
+                    <label class="switch">
+                        <input type="checkbox" id="ricBudgetEdit">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="periodo-budget-addEdit" class="ric-cards"></div>
+            </div>
+
+            <div class="button-group row">
+                <button class="overlayButton" type="submit">Salva</button>
+                <button class="overlayButton" type="button" id="closeBudgetFormBtnEdit">Annulla</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+
 <!-- Pagina Gestisci dati //////////////////////////////////////////////////////////////-->
 <section id="impostazioni" class="page-section">
     <h2>Impostazioni</h2>
@@ -264,7 +339,7 @@
     </div>
 
     <div class="info-section">
-        <p class="countTrs">v.1.0.3</p>
+        <p class="countTrs">v.1.0.4</p>
         <p>
             Con <strong>MoneyLog</strong> puoi avere sempre sotto controllo le tue entrate e uscite quotidiane, senza complicazioni e con la massima attenzione alla privacy.
             L’app non salva alcun dato al di fuori del tuo dispositivo. Tutto rimane solo a te.

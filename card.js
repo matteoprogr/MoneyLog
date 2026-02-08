@@ -1,9 +1,9 @@
 import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId, saveRicorrenza, updateRicorrenza, deleteRicorrenza, updatePeriodo } from './queryDexie.js';
-import { createCriteri } from './main.js';
+import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
-import { getCategorie, switchRichieste, replaceCat } from './queryDexie.js';
-import { categorieCreateComponent } from './main.js';
+import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget } from './queryDexie.js';
+import { categorieCreateComponent, parseDateRange, convertDDMMYYYYtoDate } from './main.js';
 import { getUser } from './main.js';
 import { insertTrs, updateTrs } from './supaSync.js';
 
@@ -134,6 +134,21 @@ export function nessunaCategoriaComponent(tipo) {
                return container;
 }
 
+export function nessunBudgetComponent(tipo) {
+        const container = document.createElement("div");
+        container.classList.add("nessuna-spesa");
+           container.innerHTML = `
+             <div>
+                <span class="rowExplain">😢   Nessuna ${tipo} disponibile</span>
+                <span class="rowExplain">➕   Crea un nuovo ${tipo}</span>
+                <span class="rowExplain">🗑️   Elimina ${tipo} selezionato</span>
+                <span class="rowExplain">👆   Tieni premuto per modificare </span>
+             </div>
+           `;
+
+               return container;
+}
+
 
 export function categoriaComponent(categoria, richieste) {
     const container = document.createElement("div");
@@ -158,46 +173,45 @@ export function categoriaComponent(categoria, richieste) {
 
     const span = container.querySelector('.cat-name');
     container.addEventListener("touchstart", () => {
-    pressTimer = setTimeout(() => {
-        const input = document.createElement("input");
-        input.type = "text";
-        const oldValue = span.textContent.trim();
-        input.value = oldValue
-        input.maxLength = 25;
-        input.classList.add("cat-input");
+        pressTimer = setTimeout(() => {
+            const input = document.createElement("input");
+            input.type = "text";
+            const oldValue = span.textContent.trim();
+            input.value = oldValue
+            input.maxLength = 25;
+            input.classList.add("cat-input");
 
-        span.replaceWith(input);
-        input.focus();
+            span.replaceWith(input);
+            input.focus();
 
-        const confirm = async () => {
-            const newValue = input.value.trim() || categoria;
-            span.textContent = newValue;
-            try{ input.replaceWith(span); }catch{}
-            if (oldValue !== newValue) {
-                await replaceCat(oldValue, newValue);
-            }
-            categorieCreateComponent();
+            const confirm = async () => {
+                const newValue = input.value.trim() || categoria;
+                span.textContent = newValue;
+                try{ input.replaceWith(span); }catch{}
+                if (oldValue !== newValue) {
+                    await replaceCat(oldValue, newValue);
+                }
+                categorieCreateComponent();
 
-        };
+            };
 
-        const notConfirm = async () => {
-            span.textContent = oldValue;
-            try{ input.replaceWith(span); }catch{}
-        };
+            const notConfirm = async () => {
+                span.textContent = oldValue;
+                try{ input.replaceWith(span); }catch{}
+            };
 
-        input.addEventListener("blur", notConfirm, { once: true });
-        input.addEventListener("keydown", (ev) => {
-            if (ev.key === "Enter") {
-                confirm();
-            }
-        });
-    }, 600);
-});
+            input.addEventListener("blur", notConfirm, { once: true });
+            input.addEventListener("keydown", (ev) => {
+                if (ev.key === "Enter") {
+                    confirm();
+                }
+            });
+        }, 600);
+    });
 
     container.addEventListener("touchend", () => {
         clearTimeout(pressTimer);
     });
-
 
     container.addEventListener("click", () => {
         container.classList.toggle("selected");
@@ -205,6 +219,255 @@ export function categoriaComponent(categoria, richieste) {
 }
 
     return container;
+}
+
+
+function periodoBudget(slider, periodo, ric){
+    let pSelected = null;
+    if (slider.checked) {
+        if(isValid(periodo)) pSelected = periodo;
+
+        ric.innerHTML = "";
+        const periodi = ["mensile", 'annuale'];
+        periodi.forEach( p => {
+            const card = budgetRic(p, pSelected);
+            ric.appendChild(card);
+        });
+    }else{
+        ric.innerHTML = "";
+    }
+}
+
+function renderBudgetProgress(budget, cardElement) {
+  const perc = budget.destinato > 0
+    ? Math.min((budget.usato / budget.destinato) * 100, 100)
+    : 0;
+
+  const bar = cardElement.querySelector('.budget-progress-bar-fill');
+  const percLabel = cardElement.querySelector('.budget-progress-perc');
+  const label = cardElement.querySelector('.budget-progress-usato');
+
+  bar.style.width = `${perc}%`;
+  percLabel.textContent = `${Math.round(budget.destinato)}`;
+
+  bar.classList.remove('ok', 'warning','serious-warning', 'danger');
+  percLabel.classList.remove('ok', 'warning','serious-warning', 'danger');
+  label.classList.remove('ok', 'warning','serious-warning', 'danger');
+
+  let status = 'ok';
+  if (perc >= 60 && perc < 80) status = 'warning';
+  if (perc >= 80 && perc < 95) status = 'serious-warning';
+  if (perc >= 95) status = 'danger';
+
+  bar.classList.add(status);
+  percLabel.classList.add(status);
+  label.classList.add(status);
+}
+
+
+export function compBudget(budget){
+
+    const usato = budget.usato;
+    const destinato = budget.destinato;
+    const perc = destinato / 100 * usato;
+    const container = document.createElement("div");
+    container.setAttribute("id", budget.budgetId);
+    container.classList.add("budgetContainer");
+           container.innerHTML = `
+        <div class="budget-progress-card">
+            <div class="budget-progress-header">
+                <span class="budget-progress-label">${budget.categoria}</span>
+                <span class="budget-progress-label">${budget.periodo}</span>
+            </div>
+            <div class="budget-progress-header">
+                <span class="budget-progress-usato">${budget.usato}</span>
+                <span class="budget-progress-perc">${budget.destinato}</span>
+            </div>
+            <div class="budget-progress-bar-track">
+                <div class="budget-progress-bar-fill"></div>
+            </div>
+        </div>
+           `;
+
+   renderBudgetProgress(budget, container);
+
+    container.addEventListener("click", (e) => {
+      e.stopPropagation();
+      container.classList.toggle("selected");
+    });
+
+   let pressTimer;
+
+   container.addEventListener("touchstart", () => {
+     pressTimer = setTimeout(() => {
+       overlayBudgetEdit(budget);
+     }, 600);
+   });
+
+   container.addEventListener("touchend", () => {
+     clearTimeout(pressTimer);
+   });
+
+    return container;
+}
+
+export async function overlayBudget(){
+    const openBtn = document.getElementById('addBudgetBtn');
+    const overlay = document.getElementById('budgetFormOverlay');
+    const form = document.getElementById('budgetForm');
+    const categoriaInput = document.getElementById('budgetCategoria');
+    const catRow = document.getElementById('categorieCardsBudget');
+    const closeBtn = document.getElementById('closeBudgetFormBtn');
+    const importo = document.getElementById('budgetImporto');
+    const slider = document.getElementById('ricBudget');
+    const ric = document.getElementById('periodo-budget-add');
+
+    openBtn.addEventListener('click', async (e) => {
+        if (overlay.classList.contains('showOverlay')) {
+            overlay.classList.remove('showOverlay');
+            form.reset();
+        } else {
+             catRow.innerHTML = "";
+             ric.innerHTML = "";
+             overlay.classList.toggle("showOverlay");
+             const categorie = await getCategorie();
+             categorie.forEach(cat => {
+                 const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
+                 catRow.appendChild(card);
+                 data.value = new Date().toISOString().split("T")[0];
+             });
+            slider.addEventListener('click', async (e) =>{
+                periodoBudget(slider, null, ric);
+            });
+         }
+    });
+
+    closeBtn.addEventListener('click',async () =>{
+        overlay.classList.remove('showOverlay');
+        form.reset();
+    });
+
+        categoriaInput.addEventListener("input",async (event) =>{
+          const categorie = await getCategorie(categoriaInput.value);
+          const fragment = document.createDocumentFragment();
+          categorie.forEach((cat, i) => {
+            const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
+            card.classList.add("cardTr");
+            card.style.animationDelay = `${i * 0.1}s`;
+            fragment.appendChild(card);
+          });
+          catRow.replaceChildren(fragment);
+        });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const r = document.querySelector('.budgetRic.selectedBudget');
+        const periodo = isValid(r) ? (r.innerText) : "";
+        const data = new Date().toISOString().split('T')[0];
+        const budget = {
+            budgetId: crypto.randomUUID(),
+            categoria: categoriaInput.value.trim(),
+            periodo: periodo,
+            destinato: parseFloat(importo.value),
+            data: data
+        };
+
+
+        try {
+            overlay.classList.remove('showOverlay');
+            await createBudget(budget);
+
+            saveCategoria(budget.categoria, 0);
+            criteriBudget();
+            form.reset();
+            showToast("Budget aggiunto con successo", "success");
+        } catch (err) {
+            showErrorToast("Errore durante il salvataggio", "error");
+            console.log("Errore durante il salvataggio", err);
+        }
+    });
+}
+
+export async function overlayBudgetEdit(budget){
+
+    document.getElementById('budgetCategoriaEdit').value = budget.categoria;
+    document.getElementById('budgetImportoEdit').value = budget.destinato;
+    const periodo = budget.periodo;
+    const flag = isValid(periodo) ? true : false;
+    document.getElementById('ricBudgetEdit').value = flag;
+    document.getElementById('periodo-budget-addEdit');
+
+    const overlay = document.getElementById('budgetFormOverlayEdit');
+    const form = document.getElementById('budgetFormEdit');
+    const categoriaInput = document.getElementById('budgetCategoriaEdit');
+    const catRow = document.getElementById('categorieCardsBudgetEdit');
+    const closeBtn = document.getElementById('closeBudgetFormBtnEdit');
+    const importo = document.getElementById('budgetImportoEdit');
+    const slider = document.getElementById('ricBudgetEdit');
+    const ric = document.getElementById('periodo-budget-addEdit');
+    const budgetId = budget.budgetId
+    if(flag){
+        slider.checked = true;
+        periodoBudget(slider, periodo, ric);
+     }
+
+     catRow.innerHTML = "";
+     const categorie = await getCategorie();
+     categorie.forEach(cat => {
+         const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
+         catRow.appendChild(card);
+         data.value = new Date().toISOString().split("T")[0];
+     });
+     slider.addEventListener('click', async (e) =>{
+        periodoBudget(slider, periodo, ric);
+     });
+
+    overlay.classList.add('showOverlay');
+
+    closeBtn.addEventListener('click',async () =>{
+        overlay.classList.remove('showOverlay');
+        form.reset();
+    });
+
+        categoriaInput.addEventListener("input",async (event) =>{
+          const categorie = await getCategorie(categoriaInput.value);
+          const fragment = document.createDocumentFragment();
+          categorie.forEach((cat, i) => {
+            const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
+            card.classList.add("cardTr");
+            card.style.animationDelay = `${i * 0.1}s`;
+            fragment.appendChild(card);
+          });
+          catRow.replaceChildren(fragment);
+        });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const r = document.querySelector('.budgetRic.selectedBudget');
+        const periodo = isValid(r) ? (r.innerText) : "";
+        const data = new Date().toISOString().split('T')[0];
+        const budget = {
+            budgetId: budgetId,
+            categoria: categoriaInput.value.trim(),
+            periodo: periodo,
+            destinato: parseFloat(importo.value),
+            data: data
+        };
+
+
+        try {
+            overlay.classList.remove('showOverlay');
+            await updateBudget(budget);
+
+            saveCategoria(budget.categoria, 0);
+            criteriBudget();
+            form.reset();
+            showToast("Budget aggiunto con successo", "success");
+        } catch (err) {
+            showErrorToast("Errore durante il salvataggio", "error");
+            console.log("Errore durante il salvataggio", err);
+        }
+    });
 }
 
 
@@ -278,29 +541,29 @@ openBtn.addEventListener('click', async (e) => {
         };
 
 
-    try {
-        overlay.classList.remove('showOverlay');
-        const user = await getUser();
-        let trsOb;
-    if(!tab){
-        trsOb = await trsObject(transazione, "uscite");
-        await saveTrsLocal(trsOb, "uscite");
-        if(isValid(user)) insertTrs(await removeId(trsOb), "uscite");
-    }else if(tab){
-        trsOb = await trsObject(transazione, "entrate");
-        saveTrsLocal(trsOb, "entrate")
-        if(isValid(user)) insertTrs(await removeId(trsOb), "entrate");
-    }
-        if(isValid(ricorrenza)) saveRicorrenza(trsOb);
-        saveCategoria(trsOb.categoria);
-        createCriteri();
-        form.reset();
-        showToast("Transazione aggiunta con successo", "success");
-    } catch (err) {
-        showErrorToast("Errore durante il salvataggio", "error");
-        console.log("Errore durante il salvataggio", err);
-    }
- });
+        try {
+            overlay.classList.remove('showOverlay');
+            const user = await getUser();
+            let trsOb;
+        if(!tab){
+            trsOb = await trsObject(transazione, "uscite");
+            await saveTrsLocal(trsOb, "uscite");
+            if(isValid(user)) insertTrs(await removeId(trsOb), "uscite");
+        }else if(tab){
+            trsOb = await trsObject(transazione, "entrate");
+            await saveTrsLocal(trsOb, "entrate")
+            if(isValid(user)) insertTrs(await removeId(trsOb), "entrate");
+        }
+            if(isValid(ricorrenza)) saveRicorrenza(trsOb);
+            saveCategoria(trsOb.categoria);
+            createCriteri();
+            form.reset();
+            showToast("Transazione aggiunta con successo", "success");
+        } catch (err) {
+            showErrorToast("Errore durante il salvataggio", "error");
+            console.log("Errore durante il salvataggio", err);
+        }
+    });
 }
 
 export function recuperaTab(){
@@ -369,7 +632,7 @@ export async function overlayRicerca() {
         });
   }
 
-function cardRic(periodo, selected){
+function cardRic(periodo, selected, comp){
     const container = document.createElement("div");
     container.classList.add("ric");
     if(isValid(selected) && selected === periodo) container.classList.add("selectedRic");
@@ -386,6 +649,28 @@ function cardRic(periodo, selected){
             })
         }
         container.classList.toggle("selectedRic");
+    });
+
+    return container;
+}
+
+function budgetRic(periodo, selected, comp){
+    const container = document.createElement("div");
+    container.classList.add("budgetRic");
+    if(isValid(selected) && selected === periodo) container.classList.add("selectedBudget");
+    container.innerHTML = `
+        <div>
+            <span> ${periodo}</span>
+        </div>
+    `;
+    container.addEventListener("click", () => {
+        const r = document.querySelectorAll('.budgetRic.selectedBudget');
+        if(isValid(r)) {
+            r.forEach(item => {
+                item.classList.remove("selectedBudget");
+            })
+        }
+        container.classList.toggle("selectedBudget");
     });
 
     return container;
@@ -421,7 +706,11 @@ function catOverlay(categoria, sezione, selectedCards) {
             const categoria = document.getElementById('editCategoria');
             container.classList.toggle("selected");
             categoria.value = categoriaElement.innerText;
-      }
+      }else if(sezione === "addBudgetSpesa"){
+               const categoria = document.getElementById('budgetCategoria');
+               container.classList.toggle("selected");
+               categoria.value = categoriaElement.innerText;
+         }
 
     });
 
@@ -446,6 +735,7 @@ function ricComponent(slider, ricorrenza, ric){
         ric.innerHTML = "";
     }
 }
+
 
 export async function overlayEdit(spesa) {
     const overlay = document.getElementById('editSpesaFormOverlay');

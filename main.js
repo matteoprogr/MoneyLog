@@ -1,19 +1,8 @@
-import { queryTrns } from './queryDexie.js';
-import { deleteSpese, saveDeletedTrs, checkRicorrenze } from './queryDexie.js';
-import { updateRichieste } from './queryDexie.js';
-import { deleteCategorie } from './queryDexie.js';
-import { creaSpesaComponent } from './card.js';
-import { creaComponentTotale } from './card.js';
-import { overlayAddSpesa } from './card.js';
-import { nessunaElementoComponent } from './card.js';
-import { nessunaCategoriaComponent } from './card.js';
-import { categoriaComponent } from './card.js';
-import { getCategorie } from './queryDexie.js';
-import { overlayRicerca } from './card.js';
-import { overlayEdit } from './card.js';
-import { recuperaTab } from './card.js';
-import { capitalizeFirstLetter } from './queryDexie.js';
-import { saveCategoria } from './queryDexie.js';
+import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
+        deleteSpese, saveDeletedTrs, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile } from './queryDexie.js';
+import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
+        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent } from './card.js';
+
 import { syncDati, deleteTrs } from './supaSync.js';
 
 
@@ -44,13 +33,16 @@ return supabaseClient;
 //  EVENT LISTENER //////////////////////////////////
 document.getElementById("deleteSpesaBtn").addEventListener("click", deleteSpesaBtn);
 document.getElementById("deleteCategoriaBtn").addEventListener("click", deleteCategoriaBtn);
+document.getElementById("deleteBudgetBtn").addEventListener("click", deleteBudgetBtn);
 document.getElementById("importoMinEntrata").addEventListener("input", createCriteri);
 document.getElementById("importoMaxEntrata").addEventListener("input", createCriteri);
 document.getElementById("ricerca-categorie").addEventListener("input", categorieCreateComponent);
-document.getElementById("indietro").addEventListener("click", function(event) {  setDirezioneData(event, false); });
-document.getElementById("avanti").addEventListener("click", function(event) { setDirezioneData(event, false); });
-document.getElementById("indietroGraph").addEventListener("click", function(event) { setDirezioneData(event, true); });
-document.getElementById("avantiGraph").addEventListener("click", function(event) { setDirezioneData(event, true); });
+document.getElementById("indietro").addEventListener("click", function(event) {  setDirezioneData(event, "date-range", "indietro"); });
+document.getElementById("avanti").addEventListener("click", function(event) { setDirezioneData(event,  "date-range", "avanti"); });
+document.getElementById("indietroGraph").addEventListener("click", function(event) { setDirezioneData(event, "date-range-graph", "indietroGraph"); });
+document.getElementById("avantiGraph").addEventListener("click", function(event) { setDirezioneData(event, "date-range-graph", "avantiGraph"); });
+document.getElementById("indietroBudget").addEventListener("click", function(event) { setDirezioneData(event, "date-range-budget", "indietroBudget"); });
+document.getElementById("avantiBudget").addEventListener("click", function(event) { setDirezioneData(event, "date-range-budget", "avantiBudget"); });
 document.getElementById("addCategoriaBtn").addEventListener("click", saveNewCategoria);
 document.getElementById('sign-in').addEventListener('click', loginWithGoogle);
 document.getElementById('sign-out').addEventListener('click', logout);
@@ -89,14 +81,17 @@ document.querySelectorAll('nav a').forEach(link => {
             navToggle.checked = false;
         }
         if (targetId === 'movimenti') {
-            setDateRange();
+            setDateRange("#date-range");
         }
         if (targetId === 'categorie-section') {
             categorieCreateComponent()
         }
         if(targetId === "grafici"){
-            setDateRangeGraph();
+            setDateRange("#date-range-graph");
             creaGraficoBar();
+        }
+        if(targetId === "budget"){
+            setDateRange("#date-range-budget");
         }
 
         const selectedCards = document.querySelectorAll('.selected');
@@ -113,8 +108,11 @@ document.addEventListener("DOMContentLoaded", () => {
     targetId = "movimenti";
     overlayAddSpesa();
     overlayRicerca();
-    setDateRange();
+    overlayBudget();
+    setDateRange("#date-range");
     checkRicorrenze();
+    checkRicorrenzeBudgetAnnuale();
+    checkRicorrenzeBudgetMensile();
     let container = document.querySelector('.movimenti-container');
     let containerGraph = document.querySelector('.movimenti-container.graph');
     let tabs = document.querySelectorAll('.movimenti-tabs .tab');
@@ -221,7 +219,7 @@ async function saveNewCategoria(){
     const inputCategoria = document.getElementById('ricerca-categorie');
     const saveBtn = document.getElementById('addCategoriaBtn');
     const newCategoria = inputCategoria.value;
-    await saveCategoria(newCategoria);
+    await saveCategoria(newCategoria, 0);
     inputCategoria.value = "";
     categorieCreateComponent();
 }
@@ -455,117 +453,38 @@ async function createOption(trns, trnsType){
 }
 
 
-function setDirezioneData(event,graph){
+
+function setDirezioneData(event, calendar, avanti , indietro){
     const clickedId = event.target.id;
-    let dataPartenza;
-    if(graph){
-        dataPartenza = document.getElementById("date-range-graph")._flatpickr;
-    }else{
-        dataPartenza = document.getElementById("date-range")._flatpickr;
-    }
+
+    const dataPartenza = document.getElementById(calendar)._flatpickr;
 
     const mesePartenza = dataPartenza.currentMonth;
     const annoPartenza = dataPartenza.currentYear;
     const direzione = clickedId;
     let anno = annoPartenza;
     let mese = mesePartenza
-    if(direzione === "avanti" || direzione === "avantiGraph"){
+    if(direzione.includes("avanti")){
         mese = mesePartenza + 1;
         if(mesePartenza == 12){
             anno = annoPartenza + 1;
             mese = 1;
         }
-        if(graph){
-            setDateRangeGraph("#date-range-graph", mese, anno);
-            creaGraficoBar();
-        }else {
-            setDateRange("#date-range", mese, anno);
-        }
+        setDateRange("#" + calendar, mese, anno);
     }
 
-    if(direzione === "indietro" || direzione === "indietroGraph"){
+    if(direzione.includes("indietro")){
         mese = mesePartenza - 1;
         if(mesePartenza == 1){
             anno = annoPartenza - 1;
             mese = 12;
         }
-        if(graph){
-            setDateRangeGraph("#date-range-graph", mese, anno);
-            creaGraficoBar();
-        }else {
-            setDateRange("#date-range", mese, anno);
-        }
+        setDateRange("#" + calendar, mese, anno);
     }
 }
 
 
-export function setDateRange(range = "#date-range", mese, anno) {
-  let today = new Date();
-  if(isValid(mese) && isValid(anno)){
-  today = new Date(anno, mese, 1);
-  }
-
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1, 2, 0, 0);
-  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 1, 59, 0);
-  let lastDay = endOfMonth.getDate();
-
-    function formatDMY(date) {
-      const d = String(date.getDate()).padStart(2, "0");
-      const m = String(date.getMonth() + 1).padStart(2, "0");
-      const y = date.getFullYear();
-      return `${d}/${m}/${y}`;
-    }
-
-
-    function getMonthYearName(date) {
-      return date.toLocaleString("it-IT", { month: "long", year: "numeric" });
-    }
-
-  const picker = flatpickr(range, {
-    mode: "range",
-    dateFormat: "Y-m-d",
-    altInput: false,
-    locale: "it",
-    minDate: "2020-01-01",
-    maxDate: "2035-12-31",
-    defaultDate: [startOfMonth, endOfMonth],
-    formatDate: function(date, format, locale) {
-      return formatDMY(date);
-    },
-    onReady: function(selectedDates, dateStr, instance) {
-      if (
-        selectedDates.length === 2 &&
-        selectedDates[0].getDate() === 1 &&
-        selectedDates[1].getDate() === lastDay &&
-        selectedDates[0].getMonth() === selectedDates[1].getMonth()
-      ) {
-        instance.input.value = getMonthYearName(selectedDates[0]).toUpperCase();
-      }
-    },
-    onChange: function(selectedDates, dateStr, instance) {
-    const year = selectedDates[0].getFullYear();
-    const month = selectedDates[0].getMonth();
-    const lastDay = new Date(year, month + 1, 0).getDate();
-
-      if (
-        selectedDates.length === 2 &&
-        selectedDates[0].getDate() === 1 &&
-        selectedDates[1].getDate() === lastDay &&
-        selectedDates[0].getMonth() === selectedDates[1].getMonth()
-      ) {
-        instance.input.value = getMonthYearName(selectedDates[0]).toUpperCase();
-      } else {
-        instance.input.value = `${formatDMY(selectedDates[0])} – ${formatDMY(selectedDates[1])}`;
-      }
-
-      createCriteri();
-    }
-  });
-
-    createCriteri();
-}
-
-export function setDateRangeGraph(range = "#date-range-graph", mese, anno) {
+function setDateRange(range, mese, anno) {
   let today = new Date();
   if(isValid(mese) && isValid(anno)){
   today = new Date(anno, mese, 1);
@@ -623,12 +542,19 @@ export function setDateRangeGraph(range = "#date-range-graph", mese, anno) {
         instance.input.value = `${formatDMY(selectedDates[0])} – ${formatDMY(selectedDates[1])}`;
       }
 
-      criteriGraph();
+      callCriteriMethod(range);
     }
   });
 
-     criteriGraph();
+     callCriteriMethod(range);
 }
+
+function callCriteriMethod(range){
+if(range === "#date-range-budget") criteriBudget();
+if(range === "#date-range-graph") criteriGraph();
+if(range === "#date-range") createCriteri();
+}
+
 
 function getElementiTrns(tabActive){
     if(!tabActive){
@@ -725,9 +651,9 @@ export async function createCriteri() {
     const selectedCards = document.querySelectorAll('.card.selected');
     if (selectedCards.length > 0) {
      criteri = { categoria: [] };
-      selectedCards.forEach(card => {
+     selectedCards.forEach(card => {
         criteri.categoria.push(card.innerText.trim());
-      });
+     });
     }
     if(!tab){
         min = -Math.abs(document.getElementById("importoMaxEntrata").value);
@@ -783,9 +709,79 @@ export async function criteriGraph() {
     creaGraficoTorta(criteri);
 }
 
+export async function criteriBudget(){
+    const inputRange = document.getElementById("date-range-budget").value.trim();
+    const budgetList = document.getElementById("budget-lista");
+    let dataInizio, dataFine;
+    let inizioAnno, fineAnno;
+    if (inputRange.match(/^[a-z]+\s+\d{4}$/i)) {
+        const { startDate, endDate } = getMonthDateRange(inputRange);
+        dataInizio = startDate;
+        dataFine = endDate;
+
+        const { startYear, endYear } = getYearDateRange(inputRange);
+        inizioAnno = startYear;
+        fineAnno = endYear;
+    } else {
+        const { dataInizio: ds, dataFine: df } = parseDateRange(inputRange);
+        dataInizio = convertDDMMYYYYtoDate(ds);
+        dataFine = convertDDMMYYYYtoDate(df);
+    }
+
+    dataInizio = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataInizio));
+    dataFine = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataFine));
+    inizioAnno = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(inizioAnno));
+    fineAnno = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(fineAnno));
+
+    const budget = await getBudgetsByData(dataInizio, dataFine);
+    const budgetAnno = await getBudgetsByData(inizioAnno, fineAnno);
+    const allBudgets = [
+      ...new Map(
+        [...budget, ...budgetAnno].map(b => [b.budgetId, b])
+      ).values()
+    ];
+
+    for(const budget of allBudgets){
+        if(budget.periodo === "annuale"){
+            const totUsato = await getUsciteBudget(budget.categoria, inizioAnno, fineAnno);
+            budget.usato = Math.abs(totUsato);
+        }else{
+            const totUsato = await getUsciteBudget(budget.categoria, dataInizio, dataFine);
+            budget.usato = Math.abs(totUsato);
+        }
+    }
+
+    budgetList.innerHTML = "";
+    if(allBudgets.length > 0){
+        allBudgets.forEach( bgt => {
+            const container = compBudget(bgt)
+            budgetList.appendChild(container);
+        });
+    }else{
+        const container = nessunBudgetComponent("budget");
+        budgetList.appendChild(container);
+    }
+}
+
+async function getUsciteBudget(categoria, dataInizio, dataFine){
+    let filtri = {
+            categoria: categoria,
+            dataInizio: dataInizio,
+            dataFine: dataFine
+        };
+
+    const result = await queryTrns(filtri, false);
+    const tot = result.reduce((sum, trn) => {
+        return sum + (Number(trn.importo) || 0);
+    }, 0);
+
+    return tot;
+}
 
 
-function getMonthDateRange(monthNameYear) {
+
+
+export function getMonthDateRange(monthNameYear) {
   const monthNames = [
     'gennaio','febbraio','marzo','aprile','maggio','giugno',
     'luglio','agosto','settembre','ottobre','novembre','dicembre'
@@ -810,12 +806,30 @@ function getMonthDateRange(monthNameYear) {
   return { startDate, endDate };
 }
 
-function parseDateRange(str) {
+export function getYearDateRange(monthNameYear) {
+  const parts = monthNameYear.trim().toLowerCase().split(' ');
+  if (parts.length < 2) {
+    throw new Error('Formato non valido: usare "mese anno", es. "agosto 2025"');
+  }
+  const yearInput = parts[1];
+  const year = parseInt(yearInput, 10);
+
+  if (isNaN(year) || year < 0) {
+    throw new Error(`Anno non valido: "${yearInput}"`);
+  }
+
+  const startYear = new Date(year, 0, 1);
+  const endYear   = new Date(year, 11, 31);
+
+  return { startYear, endYear };
+}
+
+export function parseDateRange(str) {
   const [dataInizio = null, dataFine = null] = str.split(' – ');
   return { dataInizio, dataFine };
 }
 
-function convertDDMMYYYYtoDate(str) {
+export function convertDDMMYYYYtoDate(str) {
  if(isValid(str)){
   const [d, m, y] = str.split('/');
   return new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
@@ -823,18 +837,18 @@ function convertDDMMYYYYtoDate(str) {
   return;
 }
 
-function formatDDMMYYYY(date) {
-if(isValid(date)){
-  const d = String(date.getDate()).padStart(2, '0');
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const y = date.getFullYear();
-  return `${d}/${m}/${y}`;
-}
+export function formatDDMMYYYY(date) {
+    if(isValid(date)){
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
 return;
 
 }
 
-function convertDDMMYYYYtoYYYYMMDD(str) {
+export function convertDDMMYYYYtoYYYYMMDD(str) {
     if(isValid(str)){
         const [d, m, y] = str.split('/');
         return `${y}-${m}-${d}`;
@@ -916,7 +930,7 @@ async function deleteCategoriaBtn() {
     );
 
     if (selectedCards.length === 0) {
-        showErrorToast("Seleziona almeno una riga da eliminare.","error");
+        showErrorToast("Seleziona almeno una categoria da eliminare.","error");
         return;
     }
 
@@ -941,6 +955,32 @@ async function deleteCategoriaBtn() {
     }
 
     categorieCreateComponent();
+}
+
+async function deleteBudgetBtn(){
+    try{
+        const selectedComponents = document.querySelectorAll('.budgetContainer.selected');
+        const selectedCards = Array.from(selectedComponents).map(card => card.id);
+        if (selectedCards.length === 0) {
+            showErrorToast("Seleziona almeno un budget da eliminare.","error");
+            return;
+        }
+        for(const id of selectedCards){
+            await deleteBudget(id);
+        };
+
+        if(selectedCards.length === 1){
+            showToast("Budget eliminato con successo", "success");
+        } else {
+            showToast("Budget eliminati con successo", "success");
+        }
+
+        criteriBudget();
+    }catch(err){
+        showErrorToast("Errore durante eliminazione budget", "error");
+        console.log("Errore durante eliminazione budget", err);
+    }
+
 }
 
 export function showToast(message, type = "success") {

@@ -1,5 +1,5 @@
 import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
-        deleteSpese, saveDeletedTrs, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile } from './queryDexie.js';
+        deleteSpese, saveDeletedTrs, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
         categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent } from './card.js';
 
@@ -733,15 +733,26 @@ export async function criteriBudget(){
     inizioAnno = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(inizioAnno));
     fineAnno = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(fineAnno));
 
-    const budget = await getBudgetsByData(dataInizio, dataFine);
-    const budgetAnno = await getBudgetsByData(inizioAnno, fineAnno);
+    const budget = await getBudgets(dataInizio, dataFine, null, "");
+    const budgetMensile = await getBudgets(dataInizio, dataFine, null, "mensile");
+    const budgetAnno = await getBudgets(inizioAnno, fineAnno, null, "annuale");
+//    const allBudgets = [
+//      ...new Map(
+//        [...budget, ...budgetAnno].map(b => [b.budgetId, b])
+//      ).values()
+//    ];
     const allBudgets = [
-      ...new Map(
-        [...budget, ...budgetAnno].map(b => [b.budgetId, b])
-      ).values()
+      ...(budget ?? []),
+      ...(budgetMensile ?? []),
+      ...(budgetAnno ?? [])
     ];
 
-    for(const budget of allBudgets){
+    const uniqueBudgets = Array.from(
+      new Map(allBudgets.map(b => [b.budgetId, b])).values()
+    );
+
+
+    for(const budget of uniqueBudgets){
         if(budget.periodo === "annuale"){
             const totUsato = await getUsciteBudget(budget.categoria, inizioAnno, fineAnno);
             budget.usato = Math.abs(totUsato);
@@ -752,8 +763,8 @@ export async function criteriBudget(){
     }
 
     budgetList.innerHTML = "";
-    if(allBudgets.length > 0){
-        allBudgets.forEach( bgt => {
+    if(uniqueBudgets.length > 0){
+        uniqueBudgets.forEach( bgt => {
             const container = compBudget(bgt)
             budgetList.appendChild(container);
         });

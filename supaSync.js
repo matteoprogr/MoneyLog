@@ -38,7 +38,7 @@ export async function updateTrs(trsOb, supaTable){
         await supabaseClient
             .from(supaTable)
             .update(trsOb)
-            .eq('dataInserimento', trs.dataInserimento);
+            .eq('dataInserimento', trsOb.dataInserimento);
         if(error) {
             console.log("Errore nel salvataggio", error);
         }

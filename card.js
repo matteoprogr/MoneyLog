@@ -854,5 +854,5 @@ export async function overlayEdit(spesa) {
         showErrorToast("Errore durante la modifica:", "error");
         console.log(err);
     }
-    });
+    }, { once: true });
 }

@@ -307,7 +307,7 @@ export async function updateTrsLocal(trsOb, collectionName) {
       throw new Error("ID uscita mancante per la sostituzione");
     }
 
-    const id = await collection.put(trsOb);
+    const id =  await collection.update(trsOb.id, trsOb);
     showToast("Transazione sostituita con successo", "success");
     return { success: true, id };
 

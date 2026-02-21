@@ -550,9 +550,9 @@ function setDateRange(range, mese, anno) {
 }
 
 function callCriteriMethod(range){
-if(range === "#date-range-budget") criteriBudget();
-if(range === "#date-range-graph") criteriGraph();
-if(range === "#date-range") createCriteri();
+    if(range === "#date-range-budget") criteriBudget();
+    if(range === "#date-range-graph") criteriGraph();
+    if(range === "#date-range") createCriteri();
 }
 
 
@@ -707,6 +707,7 @@ export async function criteriGraph() {
     criteri.dataInizio = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataInizio));
     criteri.dataFine = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataFine));
     creaGraficoTorta(criteri);
+    creaGraficoBar();
 }
 
 export async function criteriBudget(){

@@ -1266,20 +1266,11 @@ input:checked + .slider:before { transform: translateX(2em); }
   }
 
   /* ---------- Movimenti tabs più spaziose ----------------- */
-.movimenti-tabs .tab {
-  margin: 0 10px;
-  padding: 6px 14px;
-  cursor: auto;
-  border-bottom: 2px solid transparent;
-  font-weight: 500;
-  color: #444;
-  transition: color 0.3s, border 0.3s;
-}
 
-.movimenti-tabs .tab.active {
-  border-bottom: none;
-  color: #444;
-  font-weight: 600;
+.gra{
+  border-bottom: none !important;
+  cursor: auto !important;
+  color: #444 !important;
 }
 
   /* ---------- Cards e righe movimenti più grandi ---------- */
@@ -1315,15 +1306,10 @@ input:checked + .slider:before { transform: translateX(2em); }
       scroll-snap-type: x mandatory;
   }
 
-  .movimenti-tabs {
-    display: flex;
-    justify-content: space-around;
-    position: sticky;
-    z-index: 10;
-    top: 0;
-    backdrop-filter: blur(12px);
-    overflow-y: hidden;
+  .graTabs{
+      justify-content: space-around;
   }
+
 
   .spesa-totale {
     width: auto;

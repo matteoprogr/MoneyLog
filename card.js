@@ -676,7 +676,7 @@ function budgetRic(periodo, selected, comp){
     return container;
 }
 
-function catOverlay(categoria, sezione, selectedCards) {
+export function catOverlay(categoria, sezione, selectedCards) {
     const container = document.createElement("div");
     container.classList.add("card");
     if(selectedCards != null){

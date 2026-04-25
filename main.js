@@ -1,7 +1,7 @@
 import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
         deleteSpese, saveDeletedTrs, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
-        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent } from './card.js';
+        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
 
 import { syncDati, deleteTrs } from './supaSync.js';
 
@@ -47,6 +47,7 @@ document.getElementById("addCategoriaBtn").addEventListener("click", saveNewCate
 document.getElementById('sign-in').addEventListener('click', loginWithGoogle);
 document.getElementById('sign-out').addEventListener('click', logout);
 document.getElementById('btnSync').addEventListener('click', syncDati);
+document.getElementById('pulisci').addEventListener('click', pulisci);
 
 
 
@@ -686,6 +687,31 @@ export async function createCriteri() {
     criteri.dataFine = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataFine));
 
      await tracciaSpeseClick(criteri);
+}
+
+async function pulisci(){
+    document.getElementById("importoMaxEntrata").value = "";
+    document.getElementById("importoMinEntrata").value = "";
+    document.getElementById("importoMaxEntrata").value = "";
+    document.getElementById("importoMinEntrata").value = "";
+
+    const selectedCards = document.querySelectorAll('.card.selected');
+    selectedCards.forEach(card =>{
+        card.classList.remove("selected")
+    });
+
+    document.getElementById("ricerca-categorie-over").value = "";
+    const allCats = document.getElementById('categorieCardsEntrata');
+    const categorie = await getCategorie();
+    const fragment = document.createDocumentFragment();
+    categorie.forEach((cat, i) => {
+        const card = catOverlay(cat.categoria, "getSpese", null);
+        card.style.animationDelay = `${i * 0.1}s`;
+        fragment.appendChild(card);
+    });
+    allCats.replaceChildren(fragment);
+
+    createCriteri();
 }
 
 export async function criteriGraph() {

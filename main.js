@@ -274,6 +274,36 @@ function sommaAnnua(transazioni){
     return somma;
 }
 
+function getScreenInfo() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    let category;
+    if (width < 576) category = 'mobile';
+    else if (width < 992) category = 'tablet';
+    else category = 'desktop';
+
+    return {
+        width,
+        height,
+        category
+    };
+}
+
+function setPosition(ob){
+    const positions = [];
+    if(ob.category == "desktop"){
+        positions[0] = "40%";
+        positions[1] = "50%";
+        positions[2] = "60%";
+    }else{
+        positions[0] = "15%";
+        positions[1] = "40%";
+        positions[2] = "65%";
+    }
+    return positions;
+}
+
 async function creaGraficoBar(){
 const echarts = window.echarts;
 const chart = echarts.init(document.getElementById('chart'));
@@ -295,13 +325,17 @@ const totB = totE - totS;
 const divE = calcolaDivisore(sumE);
 const divU = calcolaDivisore(sumS);
 const medie = media(totE, totS, totB, divE, divU);
+const uiCategory = getScreenInfo();
+const positions = setPosition(uiCategory);
+const topTot = 35;
+const topMedia = 50;
 
 const option = {
 title: [
   {
     text: `Bilancio: ${totB.toFixed(2)}`,
-    left: '60%',
-    top: 45,
+    left: positions[2],
+    top: topTot,
     textStyle: {
       fontSize: 12,
        color: '#5470C6',
@@ -309,8 +343,8 @@ title: [
   },
     {
       text: `media: ${medie[2].toFixed(2)}`,
-      left: '60%',
-      top: 60,
+      left: positions[2],
+      top: topMedia,
       textStyle: {
         fontSize: 12,
          color: '#5470C6',
@@ -318,8 +352,8 @@ title: [
     },
   {
     text: `Entrate: ${totE.toFixed(2)}`,
-    left: '40%',
-    top: 45,
+    left: positions[0],
+    top: topTot,
     textStyle: {
       fontSize: 12,
       color: '#4caf50'
@@ -327,8 +361,8 @@ title: [
   },
     {
       text: `media: ${medie[0].toFixed(2)}`,
-      left: '40%',
-      top: 60,
+      left: positions[0],
+      top: topMedia,
       textStyle: {
         fontSize: 12,
         color: '#4caf50'
@@ -336,8 +370,8 @@ title: [
     },
   {
     text: `Uscite: ${totS.toFixed(2)}`,
-    left: '50%',
-    top: 45,
+    left: positions[1],
+    top: topTot,
     textStyle: {
       fontSize: 12,
       color: '#ff5252'
@@ -345,8 +379,8 @@ title: [
   },
     {
       text: `media: ${medie[1].toFixed(2)}`,
-      left: '50%',
-      top: 60,
+      left: positions[1],
+      top: topMedia,
       textStyle: {
         fontSize: 12,
         color: '#ff5252'

@@ -243,6 +243,29 @@ function sommaPerMese(transazioni) {
   return somme;
 }
 
+function media(entrate, uscite, bilancio, divisoreE, divisoreU) {
+    const divisoreBilancio = Math.max(divisoreE, divisoreU);
+
+    const round2 = (n) => Math.round(n * 100) / 100;
+
+    return [
+        round2(entrate / divisoreE),
+        round2(uscite / divisoreU),
+        round2(bilancio / divisoreBilancio)
+    ];
+}
+
+function calcolaDivisore(arr){
+    let count = 0;
+    for(let i = 0; i < 12; i++){
+        if(arr[i] > 0){
+            count++;
+        }
+    }
+    return count;
+}
+
+
 function sommaAnnua(transazioni){
     let somma = 0;
     transazioni.forEach(item => {
@@ -269,18 +292,67 @@ const sumE = sommaPerMese(entrate);
 const totS = sommaAnnua(spese);
 const totE = sommaAnnua(entrate);
 const totB = totE - totS;
-const colorBilancio = totB >= 0 ? '#4caf50' : '#ff5252';
+const divE = calcolaDivisore(sumE);
+const divU = calcolaDivisore(sumS);
+const medie = media(totE, totS, totB, divE, divU);
 
 const option = {
-  title: {
-    text: `Bilancio annuale:   ${totB.toFixed(2)}`,
-    left: 'center',
-    top: 50,
+title: [
+  {
+    text: `Bilancio: ${totB.toFixed(2)}`,
+    left: '60%',
+    top: 45,
     textStyle: {
       fontSize: 12,
-      color: colorBilancio
+       color: '#5470C6',
     }
   },
+    {
+      text: `media: ${medie[2].toFixed(2)}`,
+      left: '60%',
+      top: 60,
+      textStyle: {
+        fontSize: 12,
+         color: '#5470C6',
+      }
+    },
+  {
+    text: `Entrate: ${totE.toFixed(2)}`,
+    left: '40%',
+    top: 45,
+    textStyle: {
+      fontSize: 12,
+      color: '#4caf50'
+    }
+  },
+    {
+      text: `media: ${medie[0].toFixed(2)}`,
+      left: '40%',
+      top: 60,
+      textStyle: {
+        fontSize: 12,
+        color: '#4caf50'
+      }
+    },
+  {
+    text: `Uscite: ${totS.toFixed(2)}`,
+    left: '50%',
+    top: 45,
+    textStyle: {
+      fontSize: 12,
+      color: '#ff5252'
+    }
+  },
+    {
+      text: `media: ${medie[1].toFixed(2)}`,
+      left: '50%',
+      top: 60,
+      textStyle: {
+        fontSize: 12,
+        color: '#ff5252'
+      }
+    }
+],
   tooltip: {
     trigger: 'axis',
     valueFormatter: function (val) {

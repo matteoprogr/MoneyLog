@@ -486,15 +486,16 @@ export async function switchRichieste(nomeOld, nomeNew){
 }
 
 export async function replaceCat(oldCat, newCat) {
+  newCat = capitalizeFirstLetter(newCat);
   if (oldCat === newCat) return;
   const oldArr = await getCategorieEsatta(oldCat);
   if (!oldArr || oldArr.length === 0) return;
   const record = oldArr[0];
-  await db.categorie.delete(oldCat);
-  if(!await db.categorie.get(newCat)) await db.categorie.put({...record,categoria: newCat });
+  if(!await db.categorie.get(newCat)) await saveCategoria(newCat, record.richieste);
   const newArr = await getCategorieEsatta(newCat);
   const recordNew = newArr[0];
   await updateCatInTrns(record, recordNew);
+  await db.categorie.delete(oldCat);
 }
 
 
@@ -507,19 +508,19 @@ async function updateCatInTrns(oldCat, newCat){
     if(catSpese.length !== 0){
         for(const spesa of catSpese){
             const trsOb = await trsObject(spesa, "uscite");
-            spesa.categoria = newRecord;
+            trsOb.categoria = newRecord;
             await updateTrsLocal(trsOb,"uscite");
-            if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
-            await updateRichieste(null, "more", newRecord);
+            await updateRichieste(null, "less", oldCat);
+            await updateRichieste(null, "more", newCat);
         }
     }
     if(catEntrate.length !== 0){
         for(const entrata of catEntrate){
             const trsOb = await trsObject(entrata, "entrate");
-            entrata.categoria = newRecord;
+            trsOb.categoria = newRecord;
             await updateTrsLocal(trsOb, "entrate");
-            if(await db.categorie.get(oldCat)) await updateRichieste(null, "less", oldCat);
-            await updateRichieste(null, "more", newRecord);
+            await updateRichieste(null, "less", oldCat);
+            await updateRichieste(null, "more", newCat);
         }
     }
 

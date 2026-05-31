@@ -55,14 +55,22 @@ export function creaSpesaComponent(trsn,tabActive) {
 
         let pressTimer;
 
-        container.addEventListener("touchstart", () => {
+        container.addEventListener("pointerdown", () => {
           pressTimer = setTimeout(() => {
             overlayEdit(trsn);
           }, 600);
         });
 
-        container.addEventListener("touchend", () => {
-          clearTimeout(pressTimer);
+        container.addEventListener("pointerup", () => {
+            clearTimeout(pressTimer);
+        });
+
+        container.addEventListener("pointerleave", () => {
+            clearTimeout(pressTimer);
+        });
+
+        container.addEventListener("pointercancel", () => {
+            clearTimeout(pressTimer);
         });
 
 
@@ -172,7 +180,7 @@ export function categoriaComponent(categoria, richieste) {
     `;
 
     const span = container.querySelector('.cat-name');
-    container.addEventListener("touchstart", () => {
+    container.addEventListener("pointerdown", () => {
         pressTimer = setTimeout(() => {
             const input = document.createElement("input");
             input.type = "text";
@@ -209,7 +217,15 @@ export function categoriaComponent(categoria, richieste) {
         }, 600);
     });
 
-    container.addEventListener("touchend", () => {
+    container.addEventListener("pointerup", () => {
+        clearTimeout(pressTimer);
+    });
+
+    container.addEventListener("pointerleave", () => {
+        clearTimeout(pressTimer);
+    });
+
+    container.addEventListener("pointercancel", () => {
         clearTimeout(pressTimer);
     });
 
@@ -298,14 +314,23 @@ export function compBudget(budget){
 
    let pressTimer;
 
-   container.addEventListener("touchstart", () => {
+   container.addEventListener("pointerdown", () => {
      pressTimer = setTimeout(() => {
        overlayBudgetEdit(budget);
      }, 600);
    });
 
-   container.addEventListener("touchend", () => {
-     clearTimeout(pressTimer);
+
+   container.addEventListener("pointerup", () => {
+       clearTimeout(pressTimer);
+   });
+
+   container.addEventListener("pointerleave", () => {
+       clearTimeout(pressTimer);
+   });
+
+   container.addEventListener("pointercancel", () => {
+       clearTimeout(pressTimer);
    });
 
     return container;

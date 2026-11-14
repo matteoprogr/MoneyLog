@@ -1,4 +1,4 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, saveRicorrenza, aggiornaMovimento } from './queryDexie.js';
+import { updateTrsLocal, aggiungiMovimento, saveCategoria, trsObject, aggiornaMovimento } from './queryDexie.js';
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
@@ -339,7 +339,7 @@ export function compBudget(budget){
 
 const NEW_PROJECT = 'new-project';
 
-async function populateProjects(select, selected = '', allowCreate = false, emptyLabel = 'Nessun progetto') {
+export async function populateProjects(select, selected = '', allowCreate = false, emptyLabel = 'Nessun progetto') {
     const projects = await getProjects();
     select.replaceChildren(new Option(emptyLabel, ''));
     for (const project of projects) {
@@ -353,7 +353,7 @@ async function prepareExpenseProject(form, tab, projectId) {
     const select = form.elements.projectId;
     select.disabled = tab !== false;
     select.closest('label').hidden = select.disabled;
-    if (!select.disabled) await populateProjects(select, projectId);
+    if (!select.disabled) await populateProjects(select, projectId, Boolean(form.elements.projectName));
 }
 
 function configureBudgetForm(form, overlay, closeBtn, edit) {
@@ -484,7 +484,17 @@ const descrizione = document.getElementById('descrizione');
 const data = document.getElementById('data');
 const slider = document.getElementById('ricorrente');
 const ric = document.getElementById('ricorrente-card-add');
-let ricorrenza;
+const projectName = form.elements.projectName;
+const projectSelect = form.elements.projectId;
+
+function updateProjectField() {
+    const creating = !projectSelect.disabled && projectSelect.value === NEW_PROJECT;
+    projectName.closest('label').hidden = !creating;
+    projectName.disabled = !creating;
+    projectName.required = creating;
+}
+projectSelect.addEventListener('change', updateProjectField);
+const submit = form.querySelector('[type="submit"]');
 
 openBtn.addEventListener('click', async (e) => {
     if (overlay.classList.contains('showOverlay')) {
@@ -493,14 +503,16 @@ openBtn.addEventListener('click', async (e) => {
     } else {
         catRow.innerHTML = "";
         ric.innerHTML = "";
-        overlay.classList.toggle("showOverlay");
+        form.reset();
         await prepareExpenseProject(form, recuperaTab());
+        updateProjectField();
         const categorie = await getCategorie();
         categorie.forEach(cat => {
             const card = catOverlay(cat.categoria, "addSpesa", null);
             catRow.appendChild(card);
         });
         data.value = new Date().toISOString().split("T")[0];
+        overlay.classList.add("showOverlay");
     }
     });
     slider.addEventListener('change', () => ricComponent(slider, null, ric));
@@ -535,24 +547,30 @@ openBtn.addEventListener('click', async (e) => {
             showErrorToast('Seleziona un periodo per la ricorrenza.');
             return;
         }
-        ricorrenza = slider.checked ? r.innerText.trim() + '%' + crypto.randomUUID() : null;
+        const creatingProject = tab === false && projectSelect.value === NEW_PROJECT;
+        const newProject = creatingProject ? projectName.value.trim() : '';
+        if (creatingProject && !newProject) {
+            showErrorToast('Inserisci il nome del progetto.');
+            return;
+        }
+        const ricorrenza = slider.checked ? r.innerText.trim() + '%' + crypto.randomUUID() : null;
         const transazione = {
             categoria: categoriaInput.value.trim(),
             data: data.value,
             importo: parseFloat(importo.value),
             descrizione: descrizione.value,
-            projectId: tab === false ? form.elements.projectId.value : null,
+            projectId: tab === false && !creatingProject ? projectSelect.value : null,
             ricorrenteId: ricorrenza
         };
 
 
+        if (submit.disabled) return;
+        submit.disabled = true;
         try {
-            overlay.classList.remove('showOverlay');
             const tableName = tab ? "entrate" : "uscite";
             const trsOb = await trsObject(transazione, tableName);
-            const saved = await saveTrsLocal(trsOb, tableName);
-            if (!saved.success) throw saved.error;
-            if (ricorrenza) await saveRicorrenza(trsOb);
+            await aggiungiMovimento(trsOb, tableName, newProject);
+            overlay.classList.remove("showOverlay");
             saveCategoria(trsOb.categoria);
             createCriteri();
             form.reset();
@@ -560,6 +578,8 @@ openBtn.addEventListener('click', async (e) => {
         } catch (err) {
             showErrorToast("Errore durante il salvataggio", "error");
             console.log("Errore durante il salvataggio", err);
+        } finally {
+            submit.disabled = false;
         }
     });
 }
@@ -589,13 +609,13 @@ export async function overlayRicerca() {
     const catRow = document.getElementById('categorieCardsEntrata');
     const categoriaInput = document.getElementById('ricerca-categorie-over');
     const progetto = document.getElementById('ricerca-progetto');
-    let selectedCards = document.querySelectorAll(".card.selected");
+    let selectedCards = catRow.querySelectorAll(".card.selected");
 
     openBtn.addEventListener('click', async (e) => {
         if (overlay.classList.contains('showOverlay')) {
             overlay.classList.remove('showOverlay');
         } else {
-            selectedCards = document.querySelectorAll(".card.selected");
+            selectedCards = catRow.querySelectorAll(".card.selected");
             catRow.innerHTML = "";
             await populateProjects(progetto, progetto.value, false, "Tutti i progetti");
             overlay.classList.add("showOverlay");
@@ -612,7 +632,7 @@ export async function overlayRicerca() {
               overlay.classList.remove('showOverlay');
     });
      categoriaInput.addEventListener("input",async (event) =>{
-          selectedCards = document.querySelectorAll(".card.selected");
+          selectedCards = catRow.querySelectorAll(".card.selected");
           const criteri = [];
           if(isValid(categoriaInput.value)){
               criteri.push(categoriaInput.value);
@@ -745,13 +765,13 @@ export async function overlayEdit(spesa) {
     ricComponent(slider, previousId, ric);
 
     catRow.innerHTML = "";
-    overlay.classList.add("showOverlay");
     const categorie = await getCategorie();
     categorie.forEach(cat => {
     const card = catOverlay(cat.categoria, "editSpesa", null);
     catRow.appendChild(card);
     });
 
+    overlay.classList.add("showOverlay");
     slider.onchange = () => ricComponent(slider, previousId, ric);
     categoriaElement.oninput = async () => {
         const categorie = await getCategorie(categoriaElement.value);

@@ -84,6 +84,9 @@
                 <label class="project-field" hidden>
                     <select name="projectId" aria-label="Progetto" disabled></select>
                 </label>
+                <label data-new-expense-project hidden>Nome progetto
+                    <input name="projectName" maxlength="60" placeholder="Es. Lisbona" disabled>
+                </label>
                 <div class="ricorrenza-box">
                     <span class="ricorrenza-label">Ricorrente 🔁</span>
                     <label class="switch">
@@ -169,8 +172,15 @@
     <div class="sticky-bar">
         <h2>Grafici</h2>
     </div>
+    <div id="chart-summary" class="chart-summary"></div>
     <div class="chart-wrapper">
         <div id="chart"></div>
+    </div>
+
+    <div class="input-group row chart-period">
+        <button class="frecciaBtn" type="button" id="indietroGraph"> < </button>
+        <input type="text" id="date-range-graph">
+        <button class="frecciaBtn" type="button" id="avantiGraph"> > </button>
     </div>
 
     <div class="movimenti-tabs graTabs">
@@ -192,11 +202,7 @@
         </div>
     </div>
 
-    <div class="input-group row">
-        <button class="frecciaBtn" type="button" id="indietroGraph"> < </button>
-        <input type="text" id="date-range-graph">
-        <button class="frecciaBtn" type="button" id="avantiGraph"> > </button>
-    </div>
+
 
 </section>
 
@@ -205,11 +211,6 @@
 <section id="budget" class="page-section">
     <div class="sticky-bar bodyBackground">
         <h2>Budget</h2>
-        <div class="input-group row">
-            <button class="frecciaBtn" type="button" id="indietroBudget"> &lt; </button>
-            <input type="text" id="date-range-budget" readonly>
-            <button class="frecciaBtn" type="button" id="avantiBudget"> &gt; </button>
-        </div>
     </div>
 
     <div class="budget-wrapper">
@@ -218,7 +219,28 @@
 
     <div class="fullscreenBtnContainer">
         <button class="fullscreenBtn" id="addBudgetBtn">➕</button>
+        <button class="fullscreenBtn" id="getBudgetBtn" aria-label="Cerca budget" aria-expanded="false">🔍</button>
         <button class="fullscreenBtn" id="deleteBudgetBtn">🗑️</button>
+    </div>
+
+    <div id="budgetSearchOverlay" inert>
+        <div class="input-group row">
+            <button class="frecciaBtn" type="button" id="indietroBudget" aria-label="Mese precedente">&lt;</button>
+            <input type="text" id="date-range-budget" aria-label="Periodo dei budget" readonly>
+            <button class="frecciaBtn" type="button" id="avantiBudget" aria-label="Mese successivo">&gt;</button>
+        </div>
+        <div class="input-group budget-fields">
+            <input type="text" id="budget-search-category" aria-label="Cerca categorie" placeholder="Cerca fra le tue categorie">
+            <div id="budget-search-categories" class="categorie-cards" role="group" aria-label="Categorie"></div>
+            <select id="budget-search-project" aria-label="Progetto"><option value="">Tutti i progetti</option></select>
+        </div>
+        <div class="input-group row">
+            <input type="number" id="budget-search-min" min="0" step="0.01" placeholder="Stanziato min" aria-label="Importo stanziato minimo">
+            <input type="number" id="budget-search-max" min="0" step="0.01" placeholder="Stanziato max" aria-label="Importo stanziato massimo">
+        </div>
+        <div class="input-group">
+            <button class="pulisci" type="button" id="budget-search-reset">Pulisci</button>
+        </div>
     </div>
 
     <!-- OVERLAY: inserisci budget -->
@@ -321,6 +343,22 @@
     </div>
 
 
+    <details class="btn" id="project-management">
+        <summary><h3>Gestisci progetti</h3></summary>
+        <ul id="project-management-list"></ul>
+    </details>
+    <dialog id="project-delete-dialog" aria-labelledby="project-delete-title">
+        <h3 id="project-delete-title">Elimina progetto</h3>
+        <p id="project-delete-message"></p>
+        <p>I movimenti e le loro ricorrenze saranno conservati senza il progetto.
+            I budget collegati conserveranno la propria periodicità e conteggeranno tutte le uscite della categoria nel loro periodo.
+            Eventuali budget già presenti nella stessa categoria resteranno distinti.</p>
+        <form method="dialog" class="modal-actions">
+            <button value="cancel" autofocus>Annulla</button>
+            <button value="delete" class="btn-danger">Elimina</button>
+        </form>
+    </dialog>
+
     <div id="confirmModal" class="modal hidden">
         <div class="modal-content">
             <h2>Conferma Eliminazione</h2>
@@ -370,7 +408,7 @@
         <ul class="info-list">
             <li><strong>Movimenti:</strong> registra le tue uscite e le tue entrate. Puoi assegnare una categoria, una data, un importo e una descrizione. Puoi anche impostare un movimento come ricorrente e filtrare la lista per periodo, categoria o importo tramite la ricerca.</li>
             <li><strong>Grafici:</strong> visualizza l'andamento delle tue finanze nel tempo. Il grafico a barre mostra l'andamento mensile, mentre i grafici a torta ripartiscono uscite ed entrate per categoria. Naviga tra i periodi con le frecce o seleziona un intervallo personalizzato.</li>
-            <li><strong>Budget:</strong> imposta un limite di spesa per categoria. Abbina un progetto alle uscite per seguire, per esempio, un viaggio, e scegli un periodo personalizzato se le spese cadono in mesi diversi. La barra di avanzamento cambia colore man mano che ti avvicini al limite.</li>
+            <li><strong>Budget:</strong> imposta un limite di spesa per categoria. Per seguire un viaggio o un’altra iniziativa, associa lo stesso progetto al budget e alle relative uscite. Un’uscita può contribuire sia al budget generale della categoria sia a quello del progetto, se rientra nel periodo di entrambi. Usa un periodo personalizzato per includere spese sostenute in mesi diversi. La barra di avanzamento cambia colore man mano che ti avvicini al limite.</li>
             <li><strong>Categorie:</strong> gestisci le categorie usate per classificare i tuoi movimenti. Puoi aggiungerne di nuove, modificare quelle esistenti, eliminarle e cercarle rapidamente.</li>
             <li><strong>Impostazioni:</strong> importa o esporta i tuoi dati in formato JSON per tenerli al sicuro. I dati sono salvati su questo dispositivo. Da qui puoi anche cancellarli tutti in modo definitivo.</li>
         </ul>

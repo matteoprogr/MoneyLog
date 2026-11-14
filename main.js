@@ -1,7 +1,7 @@
 import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
-        deleteSpese, checkRicorrenze, getProjects, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
+        deleteSpese, checkRicorrenze, getCategoryColors, getProjects, getProjectUsage, deleteProject, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
-        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
+        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, populateProjects, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
 
 /////////  SERVICE WORKER ////////////////
 if ('serviceWorker' in navigator) {
@@ -90,6 +90,8 @@ document.addEventListener("DOMContentLoaded", () => {
     overlayAddSpesa();
     overlayRicerca();
     overlayBudget();
+    setupBudgetSearch();
+    setupProjectManagement();
     setDateRange("#date-range");
     checkRicorrenze();
     checkRicorrenzeBudgetAnnuale();
@@ -254,39 +256,14 @@ function sommaAnnua(transazioni){
     return somma;
 }
 
-function getScreenInfo() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    let category;
-    if (width < 576) category = 'mobile';
-    else if (width < 992) category = 'tablet';
-    else category = 'desktop';
-
-    return {
-        width,
-        height,
-        category
-    };
-}
-
-function setPosition(ob){
-    const positions = [];
-    if(ob.category == "desktop"){
-        positions[0] = "40%";
-        positions[1] = "50%";
-        positions[2] = "60%";
-    }else{
-        positions[0] = "15%";
-        positions[1] = "40%";
-        positions[2] = "65%";
-    }
-    return positions;
-}
-
 async function creaGraficoBar(){
 const echarts = window.echarts;
-const chart = echarts.init(document.getElementById('chart'));
+const chartElement = document.getElementById('chart');
+let chart = echarts.getInstanceByDom(chartElement);
+if (!chart) {
+    chart = echarts.init(chartElement);
+    new ResizeObserver(() => chart.resize()).observe(chartElement);
+}
 const annoVisionato = document.getElementById("date-range-graph")._flatpickr;
 const annoCorrente = annoVisionato.currentYear;
 const criteri = {
@@ -305,68 +282,25 @@ const totB = totE - totS;
 const divE = calcolaDivisore(sumE);
 const divU = calcolaDivisore(sumS);
 const medie = media(totE, totS, totB, divE, divU);
-const uiCategory = getScreenInfo();
-const positions = setPosition(uiCategory);
-const topTot = 35;
-const topMedia = 50;
+const summary = document.getElementById("chart-summary");
+summary.replaceChildren(...[
+    ["Entrate", totE, medie[0]],
+    ["Uscite", totS, medie[1]],
+    ["Bilancio", totB, medie[2]]
+].map(([name, total, average]) => {
+    const item = document.createElement("div");
+    const label = document.createElement("span");
+    label.textContent = name;
+    const value = document.createElement("strong");
+    value.textContent = total.toFixed(2);
+    const mean = document.createElement("small");
+    mean.textContent = "Media " + average.toFixed(2);
+    item.append(label, value, mean);
+    return item;
+}));
 
 const option = {
-title: [
-  {
-    text: `Bilancio: ${totB.toFixed(2)}`,
-    left: positions[2],
-    top: topTot,
-    textStyle: {
-      fontSize: 12,
-       color: '#5470C6',
-    }
-  },
-    {
-      text: `media: ${medie[2].toFixed(2)}`,
-      left: positions[2],
-      top: topMedia,
-      textStyle: {
-        fontSize: 12,
-         color: '#5470C6',
-      }
-    },
-  {
-    text: `Entrate: ${totE.toFixed(2)}`,
-    left: positions[0],
-    top: topTot,
-    textStyle: {
-      fontSize: 12,
-      color: '#4caf50'
-    }
-  },
-    {
-      text: `media: ${medie[0].toFixed(2)}`,
-      left: positions[0],
-      top: topMedia,
-      textStyle: {
-        fontSize: 12,
-        color: '#4caf50'
-      }
-    },
-  {
-    text: `Uscite: ${totS.toFixed(2)}`,
-    left: positions[1],
-    top: topTot,
-    textStyle: {
-      fontSize: 12,
-      color: '#ff5252'
-    }
-  },
-    {
-      text: `media: ${medie[1].toFixed(2)}`,
-      left: positions[1],
-      top: topMedia,
-      textStyle: {
-        fontSize: 12,
-        color: '#ff5252'
-      }
-    }
-],
+  grid: { containLabel: true, left: 8, right: 8, top: 35, bottom: 12 },
   tooltip: {
     trigger: 'axis',
     valueFormatter: function (val) {
@@ -393,7 +327,7 @@ title: [
   },
   xAxis: {
     type: 'category',
-    axisLabel: { rotate: 30 , interval: 0},
+    axisLabel: { rotate: 0, interval: 0, formatter: month => month.slice(0, 3), fontSize: 10 },
     axisTick: { alignWithLabel: true }
   },
   yAxis: {
@@ -422,26 +356,32 @@ title: [
 };
 
 chart.setOption(option);
-const canvas = document.querySelector('#chart canvas');
-canvas.style.margin = '1rem';
+
 
 }
 
 async function creaGraficoTorta(criteri){
     const echarts = window.echarts;
-    const chartSpese = echarts.init(document.getElementById('chartCakeSpese'));
-    const chartEntrate = echarts.init(document.getElementById('chartCakeEntrate'));
+    const charts = ["chartCakeSpese", "chartCakeEntrate"].map(id => {
+        const element = document.getElementById(id);
+        const existing = echarts.getInstanceByDom(element);
+        if (existing) return existing;
+        const chart = echarts.init(element);
+        attachLegendHandler(chart);
+        new ResizeObserver(() => chart.resize()).observe(element);
+        return chart;
+    });
+    const [chartSpese, chartEntrate] = charts;
 
     const spese = await queryTrns(criteri,false);
     const entrate = await queryTrns(criteri,true);
-    const optionSpese = await createOption(spese,'Uscita');
-    const optionEntrate = await createOption(entrate,'Entrata');
+    const colors = await getCategoryColors([...spese, ...entrate].map(item => item.categoria));
+    const optionSpese = createOption(spese, 'Uscita', colors);
+    const optionEntrate = createOption(entrate, 'Entrata', colors);
 
     chartSpese.setOption(optionSpese);
     chartEntrate.setOption(optionEntrate);
 
-    attachLegendHandler(chartSpese);
-    attachLegendHandler(chartEntrate);
 
 }
 
@@ -472,9 +412,9 @@ function attachLegendHandler(chart) {
     });
 }
 
-async function createOption(trns, trnsType){
+function createOption(trns, trnsType, colors){
 
-  const aggregato = {};
+  const aggregato = Object.create(null);
 
   trns.forEach(item => {
     const categoria = item.categoria;
@@ -485,7 +425,7 @@ async function createOption(trns, trnsType){
     aggregato[categoria] += Math.abs(importo);
   });
 
-  const data = Object.entries(aggregato).map(([name, value]) => ({ name, value }));
+  const data = Object.entries(aggregato).map(([name, value]) => ({ name, value, itemStyle: { color: colors.get(name) } }));
   let totale = data.reduce((acc, item) => acc + item.value, 0);
 
     const option = {
@@ -541,33 +481,11 @@ async function createOption(trns, trnsType){
 
 
 
-function setDirezioneData(event, calendar, avanti , indietro){
-    const clickedId = event.target.id;
-
-    const dataPartenza = document.getElementById(calendar)._flatpickr;
-
-    const mesePartenza = dataPartenza.currentMonth;
-    const annoPartenza = dataPartenza.currentYear;
-    const direzione = clickedId;
-    let anno = annoPartenza;
-    let mese = mesePartenza
-    if(direzione.includes("avanti")){
-        mese = mesePartenza + 1;
-        if(mesePartenza == 12){
-            anno = annoPartenza + 1;
-            mese = 1;
-        }
-        setDateRange("#" + calendar, mese, anno);
-    }
-
-    if(direzione.includes("indietro")){
-        mese = mesePartenza - 1;
-        if(mesePartenza == 1){
-            anno = annoPartenza - 1;
-            mese = 12;
-        }
-        setDateRange("#" + calendar, mese, anno);
-    }
+function setDirezioneData(event, calendar) {
+    const picker = document.getElementById(calendar)._flatpickr;
+    const direction = event.currentTarget.id.startsWith("avanti") ? 1 : -1;
+    const month = new Date(picker.currentYear, picker.currentMonth + direction, 1);
+    setDateRange("#" + calendar, month.getMonth(), month.getFullYear());
 }
 
 
@@ -594,6 +512,9 @@ function setDateRange(range, mese, anno) {
 
   const picker = flatpickr(range, {
     mode: "range",
+    onOpen: (_, __, instance) => {
+      instance.calendarContainer.classList.toggle("chart-calendar", range === "#date-range-graph");
+    },
     dateFormat: "Y-m-d",
     altInput: false,
     locale: "it",
@@ -614,6 +535,7 @@ function setDateRange(range, mese, anno) {
       }
     },
     onChange: function(selectedDates, dateStr, instance) {
+    if (selectedDates.length !== 2) return;
     const year = selectedDates[0].getFullYear();
     const month = selectedDates[0].getMonth();
     const lastDay = new Date(year, month + 1, 0).getDate();
@@ -741,7 +663,7 @@ export async function createCriteri() {
     }
     let min = 0;
     let max = 0;
-    const selectedCards = document.querySelectorAll('.card.selected');
+    const selectedCards = document.querySelectorAll('#categorieCardsEntrata .card.selected');
     if (selectedCards.length > 0) {
      criteri.categoria = [];
      selectedCards.forEach(card => {
@@ -788,7 +710,7 @@ async function pulisci(){
     document.getElementById("importoMaxEntrata").value = "";
     document.getElementById("importoMinEntrata").value = "";
 
-    const selectedCards = document.querySelectorAll('.card.selected');
+    const selectedCards = document.querySelectorAll('#categorieCardsEntrata .card.selected');
     selectedCards.forEach(card =>{
         card.classList.remove("selected")
     });
@@ -829,7 +751,149 @@ export async function criteriGraph() {
     creaGraficoBar();
 }
 
+function setupProjectManagement() {
+    const management = document.getElementById("project-management");
+    const list = document.getElementById("project-management-list");
+    const dialog = document.getElementById("project-delete-dialog");
+    const message = document.getElementById("project-delete-message");
+    let selectedProject;
+
+    async function renderProjects() {
+        const projects = await getProjects();
+        const rows = projects.map(project => {
+            const row = document.createElement("li");
+            const name = document.createElement("span");
+            name.textContent = project.nome;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "Elimina";
+            button.setAttribute("aria-label", "Elimina " + project.nome);
+            button.addEventListener("click", async () => {
+                let usage;
+                try {
+                    usage = await getProjectUsage(project.projectId);
+                } catch (error) {
+                    console.error(error);
+                    showErrorToast("Impossibile leggere i collegamenti del progetto");
+                    return;
+                }
+                const [expenses, budgets, recurrences] = usage;
+                if (dialog.open) return;
+                selectedProject = project;
+                message.textContent = '"' + project.nome + '" è associato a ' + expenses +
+                    ' uscite, ' + budgets + ' budget e ' + recurrences + ' ricorrenze di uscita.';
+                dialog.returnValue = "cancel";
+                dialog.showModal();
+            });
+            row.append(name, button);
+            return row;
+        });
+        if (!rows.length) {
+            const row = document.createElement("li");
+            row.textContent = "Nessun progetto";
+            rows.push(row);
+        }
+        list.replaceChildren(...rows);
+    }
+
+    management.addEventListener("toggle", () => {
+        if (management.open) renderProjects();
+    });
+    document.querySelector('nav a[data-target="impostazioni"]').addEventListener("click", () => {
+        if (management.open) renderProjects();
+    });
+
+    dialog.addEventListener("close", async () => {
+        if (dialog.returnValue !== "delete") return;
+        const { projectId } = selectedProject;
+        try {
+            await deleteProject(projectId);
+            for (const select of document.querySelectorAll("#ricerca-progetto, #budget-search-project, select[name='projectId']")) {
+                Array.from(select.options).find(option => option.value === projectId)?.remove();
+            }
+            await renderProjects();
+            showToast("Progetto eliminato", "success");
+        } catch (error) {
+            console.error(error);
+            showErrorToast("Errore durante l’eliminazione del progetto");
+        }
+    });
+}
+
+const selectedBudgetCategories = new Set();
+
+function setupBudgetSearch() {
+    const overlay = document.getElementById("budgetSearchOverlay");
+    const button = document.getElementById("getBudgetBtn");
+    const categorySearch = document.getElementById("budget-search-category");
+    const categoryList = document.getElementById("budget-search-categories");
+    const project = document.getElementById("budget-search-project");
+    const min = document.getElementById("budget-search-min");
+    const max = document.getElementById("budget-search-max");
+
+    let categoryRevision = 0;
+    async function renderCategories() {
+        const revision = ++categoryRevision;
+        const search = categorySearch.value.trim();
+        const criteria = search ? [search, ...selectedBudgetCategories] : [];
+        const categories = await getCategorie(criteria);
+        if (revision !== categoryRevision) return;
+        categoryList.replaceChildren(...categories.map(({ categoria }) => {
+            const card = document.createElement("button");
+            card.type = "button";
+            card.className = "card";
+            card.textContent = categoria;
+            const selected = selectedBudgetCategories.has(categoria);
+            card.classList.toggle("selected", selected);
+            card.setAttribute("aria-pressed", selected);
+            card.addEventListener("click", () => {
+                const active = !selectedBudgetCategories.has(categoria);
+                if (active) selectedBudgetCategories.add(categoria);
+                else selectedBudgetCategories.delete(categoria);
+                renderCategories();
+                criteriBudget();
+            });
+            return card;
+        }));
+    }
+
+    function setOpen(open) {
+        overlay.classList.toggle("showOverlay", open);
+        overlay.inert = !open;
+        button.setAttribute("aria-expanded", open);
+    }
+
+    button.addEventListener("click", async () => {
+        if (!overlay.inert) {
+            setOpen(false);
+            return;
+        }
+        await renderCategories();
+        await populateProjects(project, project.value, false, "Tutti i progetti");
+        setOpen(true);
+        await criteriBudget();
+    });
+    document.addEventListener("click", event => {
+        if (!overlay.inert && !event.target.closest("#budgetSearchOverlay, #getBudgetBtn, .flatpickr-calendar")) {
+            setOpen(false);
+        }
+    });
+    categorySearch.addEventListener("input", renderCategories);
+    project.addEventListener("change", criteriBudget);
+    min.addEventListener("input", criteriBudget);
+    max.addEventListener("input", criteriBudget);
+    document.getElementById("budget-search-reset").addEventListener("click", () => {
+        selectedBudgetCategories.clear();
+        categorySearch.value = project.value = min.value = max.value = "";
+        renderCategories();
+        setDateRange("#date-range-budget");
+    });
+}
+
+let budgetSearchRevision = 0;
+
 export async function criteriBudget(){
+    const revision = ++budgetSearchRevision;
     const inputRange = document.getElementById("date-range-budget").value.trim();
     const budgetList = document.getElementById("budget-lista");
     let start, end;
@@ -850,8 +914,15 @@ export async function criteriBudget(){
     const [budgets, projects] = await Promise.all([getBudgets(), getProjects()]);
     const projectNames = new Map(projects.map(project => [project.projectId, project.nome]));
     const visibleBudgets = [];
+    const categories = new Set(selectedBudgetCategories);
+    const projectId = document.getElementById("budget-search-project").value;
+    const min = document.getElementById("budget-search-min").value;
+    const max = document.getElementById("budget-search-max").value;
 
     for (const budget of budgets) {
+        if (categories.size && !categories.has(budget.categoria)) continue;
+        if (projectId && budget.projectId !== projectId) continue;
+        if ((min !== "" && budget.destinato < Number(min)) || (max !== "" && budget.destinato > Number(max))) continue;
         let dataInizio = first;
         let dataFine = last;
         if (budget.periodo === "personalizzato") {
@@ -870,6 +941,7 @@ export async function criteriBudget(){
         visibleBudgets.push(budget);
     }
 
+    if (revision !== budgetSearchRevision) return;
     budgetList.innerHTML = "";
     if(visibleBudgets.length > 0){
         visibleBudgets.forEach( bgt => {

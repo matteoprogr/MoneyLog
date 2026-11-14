@@ -26,6 +26,8 @@ export function initDB() {
         project.nome = capitalizeFirstLetter(project.nome);
     }));
 
+    db.version(4).stores({ coloriCategorie: "categoria, &colore" });
+
     initCategorie();
   }
   return db;
@@ -74,32 +76,36 @@ export async function trsObject(trs, collectionName){
     }
 }
 
-export async function saveRicorrenza(trsOb){
-    initDB();
-    const ricOb = {
-      descrizione: trsOb.descrizione,
-      importo: trsOb.importo,
-      categoria: trsOb.categoria,
-      data: trsOb.data,
-      projectId: trsOb.projectId,
-      ricorrenteId: trsOb.ricorrenteId
-    };
+export async function aggiungiMovimento(movimento, collectionName, projectName) {
+    const database = initDB();
+    const collection = database.table(collectionName);
+    return database.transaction("rw", collection, database.progetti, database.ricorrenze, async () => {
+        if (collectionName === "uscite" && projectName) {
+            movimento.projectId = await resolveProject(projectName);
+        } else if (movimento.projectId && !await database.progetti.get(movimento.projectId)) {
+            movimento.projectId = null;
+        }
+        await collection.add(movimento);
+        if (movimento.ricorrenteId) await database.ricorrenze.add(datiRicorrenza(movimento));
+    });
+}
 
-    await db.ricorrenze.add(ricOb);
+function datiRicorrenza({ descrizione, importo, categoria, data, projectId, ricorrenteId }) {
+    return { descrizione, importo, categoria, data, projectId, ricorrenteId };
 }
 
 export async function aggiornaMovimento(movimento, collectionName, previousId) {
     const database = initDB();
     const collection = database.table(collectionName);
-    await database.transaction("rw", collection, database.ricorrenze, async () => {
+    await database.transaction("rw", collection, database.progetti, database.ricorrenze, async () => {
+        if (movimento.projectId && !await database.progetti.get(movimento.projectId)) movimento.projectId = null;
         const updated = await collection.update(movimento.id, movimento);
         if (!updated) throw new Error("Movimento non trovato");
         if (previousId && previousId !== movimento.ricorrenteId) {
             await database.ricorrenze.delete(previousId);
         }
         if (movimento.ricorrenteId) {
-            const { descrizione, importo, categoria, data, projectId, ricorrenteId } = movimento;
-            await database.ricorrenze.put({ descrizione, importo, categoria, data, projectId, ricorrenteId });
+            await database.ricorrenze.put(datiRicorrenza(movimento));
         }
     });
 }
@@ -133,7 +139,13 @@ export async function checkRicorrenze(){
                 const tableName = trs.importo > 0 ? "entrate" : "uscite";
                 const ricTrs = { ...trs, data: dataObject };
                 const trsOb = await trsObject(ricTrs, tableName);
-                await saveTrsLocal(trsOb, tableName);
+                await new Promise(resolve => setTimeout(resolve, 1));
+                await db.transaction("rw", db.table(tableName), db.ricorrenze, async () => {
+                    const current = await db.ricorrenze.get(trs.ricorrenteId);
+                    if (!current) return;
+                    trsOb.projectId = current.projectId ?? null;
+                    await db.table(tableName).add(trsOb);
+                });
             }
         }
     }catch(err){
@@ -205,30 +217,6 @@ function addMonths(date, months) {
 
 
 /////////////////   SALVATAGGIO TRANSAZIONI   ///////////////////////////
-export async function saveTrsLocal(trsOb, collectionName) {
-  try {
-    initDB();
-    const collection = db[collectionName];
-    await sleep(1);
-    const id = await collection.add(trsOb);
-
-    return { success: true, id };
-  } catch (error) {
-      if (error.name === 'ConstraintError') {
-        console.warn('dataInserimento già esistente');
-      } else {
-        throw error;
-      }
-    return { success: false, error };
-  }
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-
-
 async function setDescrizione(descrizione, categoria){
      if(descrizione === ""){
         return categoria;
@@ -239,6 +227,46 @@ async function setDescrizione(descrizione, categoria){
 
 
 /////////// SALVATAGGIO CATEGORIE //////////////////////
+
+const CATEGORY_PALETTE = [
+    "#5470c6", "#2b9348", "#d64b4b", "#a35bc4", "#c56a11", "#008e9b",
+    "#c83b83", "#7b6920", "#375394", "#587833", "#9b4f38", "#167ba5"
+];
+
+function prossimoColore(used) {
+    const available = CATEGORY_PALETTE.find(color => !used.has(color));
+    if (available) return available;
+    // Odd step walks distinct RGB values while skipping very dark and very light values.
+    for (let index = 0; index < 0x1000000; index++) {
+        const rgb = (0x8864a1 + index * 0x9e3779) & 0xffffff;
+        const color = "#" + rgb.toString(16).padStart(6, "0");
+        if (rgb > 0x222222 && rgb < 0xdddddd && !used.has(color)) return color;
+    }
+    throw new Error("Colori disponibili esauriti");
+}
+
+async function assegnaColoriCategorie(requested) {
+    const colors = new Map((await db.coloriCategorie.toArray()).map(item => [item.categoria, item.colore]));
+    const used = new Set(colors.values());
+    for (const { categoria, colore } of requested) {
+        if (!categoria || colors.has(categoria)) continue;
+        const preferred = typeof colore === "string" ? colore.toLowerCase() : "";
+        const chosen = /^#[0-9a-f]{6}$/.test(preferred) && preferred !== "#000000" &&
+            preferred !== "#ffffff" && !used.has(preferred) ? preferred : prossimoColore(used);
+        await db.coloriCategorie.add({ categoria, colore: chosen });
+        used.add(chosen);
+        colors.set(categoria, chosen);
+    }
+    return colors;
+}
+
+export async function getCategoryColors(names = []) {
+    const database = initDB();
+    return database.transaction("rw", database.categorie, database.coloriCategorie, async () => {
+        const categories = await database.categorie.toCollection().primaryKeys();
+        return assegnaColoriCategorie([...new Set([...categories, ...names])].map(categoria => ({ categoria })));
+    });
+}
 
 async function initSaveCategoria(categoria){
     await db.categorie.add({ categoria: categoria, richieste: 0 });
@@ -454,7 +482,15 @@ export async function replaceCat(oldCat, newCat) {
   const newArr = await getCategorieEsatta(newCat);
   const recordNew = newArr[0];
   await updateCatInTrns(record, recordNew);
-  await db.categorie.delete(oldCat);
+  await db.transaction("rw", db.categorie, db.coloriCategorie, async () => {
+      const previous = await db.coloriCategorie.get(oldCat);
+      const target = await db.coloriCategorie.get(newCat);
+      if (previous && !target) {
+          await db.coloriCategorie.delete(oldCat);
+          await db.coloriCategorie.add({ categoria: newCat, colore: previous.colore });
+      }
+      await db.categorie.delete(oldCat);
+  });
 }
 
 
@@ -549,6 +585,7 @@ async function esportaDatabase() {
             projectId: [],
             ricorrenteId: [],
             progetti: await getProjects(),
+            coloriCategorie: await db.coloriCategorie.toArray(),
             budget: await db.budget.toArray(),
             ricorrenze: await db.ricorrenze.toArray(),
             bilancio: 0
@@ -622,7 +659,8 @@ async function importaDatabase(file) {
         const result = JSON.parse(fileContent);
         const transazioni = parseDataTabella(result);
 
-        await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, async () => {
+        await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, db.coloriCategorie, async () => {
+            await assegnaColoriCategorie(result.coloriCategorie ?? []);
             const projectIds = new Map();
             for (const project of result.progetti ?? []) {
                 const existing = await db.progetti.get(project.projectId);
@@ -690,6 +728,35 @@ export function getProjects() {
     return initDB().progetti.orderBy('chiave').toArray();
 }
 
+export async function getProjectUsage(projectId) {
+    const database = initDB();
+    return database.transaction("r", database.uscite, database.budget, database.ricorrenze, () =>
+        Promise.all([database.uscite, database.budget, database.ricorrenze].map(table =>
+            table.filter(item => item.projectId === projectId).count()
+        ))
+    );
+}
+
+export async function deleteProject(projectId) {
+    const database = initDB();
+    await database.transaction("rw", database.progetti, database.uscite, database.budget, database.ricorrenze, async () => {
+        // Keep legacy project budgets distinct from general budgets after detaching them.
+        const budgets = await database.budget.filter(item => item.projectId === projectId &&
+            !item.serieBudgetId && ["mensile", "annuale"].includes(item.periodo)
+        ).toArray();
+        const tracked = new Set();
+        for (const budget of budgets.sort((a, b) => b.data.localeCompare(a.data))) {
+            if (tracked.has(budget.budgetId)) continue;
+            await database.budget.update(budget.budgetId, { serieBudgetId: budget.budgetId });
+            for (const id of await archiviaBudgetPrecedenti(budget, budget.budgetId)) tracked.add(id);
+        }
+        for (const table of [database.uscite, database.budget, database.ricorrenze]) {
+            await table.filter(item => item.projectId === projectId).modify({ projectId: null });
+        }
+        await database.progetti.delete(projectId);
+    });
+}
+
 async function resolveProject(nome, projectId = crypto.randomUUID()) {
     nome = capitalizeFirstLetter(nome.trim());
     const chiave = nome.toLocaleLowerCase("it");
@@ -715,6 +782,7 @@ async function archiviaBudgetPrecedenti(budget, seriesId) {
 async function saveBudget({ projectName, ...budget }, edit) {
     return initDB().transaction("rw", db.budget, db.progetti, async () => {
         if (projectName) budget.projectId = await resolveProject(projectName);
+        else if (budget.projectId && !await db.progetti.get(budget.projectId)) budget.projectId = null;
         budget.categoria = capitalizeFirstLetter(budget.categoria);
         budget.usato = 0;
         if (edit) {

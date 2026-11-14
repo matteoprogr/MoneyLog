@@ -1,11 +1,11 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, saveRicorrenza, updateRicorrenza, deleteRicorrenza, updatePeriodo } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, saveRicorrenza, aggiornaMovimento } from './queryDexie.js';
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
 import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget, getProjects } from './queryDexie.js';
 import { categorieCreateComponent, parseDateRange, convertDDMMYYYYtoDate } from './main.js';
 
-export function creaSpesaComponent(trsn,tabActive) {
+export function creaSpesaComponent(trsn, tabActive, projectName) {
 
          let cardClass = "";
          let bodyClass = "";
@@ -39,12 +39,19 @@ export function creaSpesaComponent(trsn,tabActive) {
                    <span class="importo ${impClass}">${trsn.importo.toFixed(2)}</span>
                  </div>
                  <div class="spesa-header">
-                   <small class="categoria">${trsn.categoria}</small>
+                   <div class="spesa-classificazione"><small class="categoria">${trsn.categoria}</small></div>
                    <small class="data">${formatDate(trsn.data)}</small>
                  </div>
              </div>
          </div>
        `;
+
+        if (!tabActive && projectName) {
+            const project = document.createElement("small");
+            project.className = "spesa-progetto";
+            project.textContent = projectName;
+            container.querySelector(".spesa-classificazione").appendChild(project);
+        }
 
          container.addEventListener("click", (e) => {
            e.stopPropagation();
@@ -492,18 +499,16 @@ openBtn.addEventListener('click', async (e) => {
         categorie.forEach(cat => {
             const card = catOverlay(cat.categoria, "addSpesa", null);
             catRow.appendChild(card);
-            data.value = new Date().toISOString().split("T")[0];
         });
-        slider.addEventListener('click', async (e) =>{
-            ricComponent(slider, null, ric);
-        });
+        data.value = new Date().toISOString().split("T")[0];
     }
-     document.addEventListener('click', (event) => {
+    });
+    slider.addEventListener('change', () => ricComponent(slider, null, ric));
+    document.addEventListener('click', (event) => {
         if (!overlay.classList.contains('showOverlay')) return;
-        if (event.target.closest('#spesaFormOverlay') || event.target.closest('#addSpesaBtn')) return;
-          overlay.classList.remove('showOverlay');
-          form.reset();
-      });
+        if (event.target.closest('#spesaFormOverlay, #addSpesaBtn')) return;
+        overlay.classList.remove('showOverlay');
+        form.reset();
     });
     closeBtn.addEventListener('click',async () =>{
         overlay.classList.remove('showOverlay');
@@ -526,7 +531,11 @@ openBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         const tab = recuperaTab();
         const r = form.querySelector('.ric.selectedRic');
-        ricorrenza = isValid(r) ? (r.innerText) + '%' + crypto.randomUUID()  : null;
+        if (slider.checked && !r) {
+            showErrorToast('Seleziona un periodo per la ricorrenza.');
+            return;
+        }
+        ricorrenza = slider.checked ? r.innerText.trim() + '%' + crypto.randomUUID() : null;
         const transazione = {
             categoria: categoriaInput.value.trim(),
             data: data.value,
@@ -541,8 +550,9 @@ openBtn.addEventListener('click', async (e) => {
             overlay.classList.remove('showOverlay');
             const tableName = tab ? "entrate" : "uscite";
             const trsOb = await trsObject(transazione, tableName);
-            await saveTrsLocal(trsOb, tableName);
-            if(isValid(ricorrenza)) saveRicorrenza(trsOb);
+            const saved = await saveTrsLocal(trsOb, tableName);
+            if (!saved.success) throw saved.error;
+            if (ricorrenza) await saveRicorrenza(trsOb);
             saveCategoria(trsOb.categoria);
             createCriteri();
             form.reset();
@@ -595,11 +605,11 @@ export async function overlayRicerca() {
             catRow.appendChild(card);
             });
         }
-         document.addEventListener('click', (event) => {
+    });
+    document.addEventListener('click', (event) => {
             if (!overlay.classList.contains('showOverlay')) return;
             if (event.target.closest('#overlayRicerca') || event.target.closest('#getSpesaBtn')) return;
               overlay.classList.remove('showOverlay');
-          });
     });
      categoriaInput.addEventListener("input",async (event) =>{
           selectedCards = document.querySelectorAll(".card.selected");
@@ -705,10 +715,16 @@ function ricComponent(slider, ricorrenza, ric){
 }
 
 
+document.addEventListener('click', event => {
+    const overlay = document.getElementById('editSpesaFormOverlay');
+    if (overlay.classList.contains('showOverlay') && !overlay.contains(event.target)) {
+        overlay.classList.remove('showOverlay');
+    }
+});
+
 export async function overlayEdit(spesa) {
     const overlay = document.getElementById('editSpesaFormOverlay');
     const catRow = document.getElementById('categorieCardsEdit');
-    const editBtn = document.getElementById('editBtn');
     const closeBtn = document.getElementById('closeEditFormBtn');
     const dataInserimento = spesa.dataInserimento;
     const form = document.getElementById('editForm');
@@ -723,22 +739,10 @@ export async function overlayEdit(spesa) {
     await prepareExpenseProject(form, tab, spesa.projectId);
     const slider = document.getElementById('ricorrenteUpdate');
     const ric = document.getElementById('ricorrente-card-upd');
-    let ricorrenza = spesa.ricorrenteId;
-    let pSaved = null;
-    if(isValid(ricorrenza)) {
-        slider.checked = true;
-        const split = ricorrenza.split('%');
-        pSaved = split[0];
-    }else{
-        slider.checked = false;
-    }
-
-
-    closeBtn.addEventListener('click',async () =>{
-        overlay.classList.remove('showOverlay');
-    });
-
-    ricComponent(slider, ricorrenza, ric);
+    const previousId = spesa.ricorrenteId;
+    slider.checked = Boolean(previousId);
+    closeBtn.onclick = () => overlay.classList.remove('showOverlay');
+    ricComponent(slider, previousId, ric);
 
     catRow.innerHTML = "";
     overlay.classList.add("showOverlay");
@@ -748,44 +752,23 @@ export async function overlayEdit(spesa) {
     catRow.appendChild(card);
     });
 
-    slider.addEventListener('click', async (e) =>{
-        ricComponent(slider, ricorrenza, ric);
-    });
-
-    document.addEventListener('click', (event) => {
-        if (!overlay.classList.contains('showOverlay')) return;
-        if (event.target.closest('#editSpesaFormOverlay')) return;
-          overlay.classList.remove('showOverlay');
-      });
-
-    categoriaElement.addEventListener("input", async (event) => {
+    slider.onchange = () => ricComponent(slider, previousId, ric);
+    categoriaElement.oninput = async () => {
         const categorie = await getCategorie(categoriaElement.value);
-        const fragment = document.createDocumentFragment();
-        categorie.forEach((cat, i) => {
-            const card = catOverlay(cat.categoria, "editSpesa", null);
-            card.classList.add("cardTr");
-            card.style.animationDelay = `${i * 0.1}s`;
-            fragment.appendChild(card);
-        });
-        catRow.replaceChildren(fragment);
-    });
+        catRow.replaceChildren(...categorie.map(cat => catOverlay(cat.categoria, 'editSpesa', null)));
+    };
     const oldCategoria = categoriaElement.value;
 
     form.onsubmit = async e => {
     e.preventDefault();
     const formCategoria = categoriaElement.value;
     const r = form.querySelector('.ric.selectedRic');
-    const pUpdated = isValid(r) ? (r.innerText) : null;
-    if(pSaved !== pUpdated) {
-        if(isValid(ricorrenza)){
-            const array = ricorrenza.split("%");
-            ricorrenza = pUpdated + "%" + array[1];
-        }else{
-            ricorrenza = pUpdated + '%' + crypto.randomUUID();
-        }
-
+    if (slider.checked && !r) {
+        showErrorToast('Seleziona un periodo per la ricorrenza.');
+        return;
     }
-    if(oldCategoria !== formCategoria) switchRichieste(oldCategoria, formCategoria);
+    const seriesId = previousId?.split('%')[1];
+    const ricorrenza = slider.checked ? r.innerText.trim() + '%' + (seriesId || crypto.randomUUID()) : null;
 
     const transazione = {
         id: parseInt(document.getElementById('editSpesaId').value),
@@ -796,19 +779,15 @@ export async function overlayEdit(spesa) {
         importo: parseFloat(document.getElementById('editImporto').value),
         descrizione: document.getElementById('editDescrizione').value,
         projectId: tab === false ? form.elements.projectId.value : null,
-        ricorrenteId: slider.checked ? ricorrenza : null
+        ricorrenteId: ricorrenza
      };
     try {
         overlay.classList.remove('showOverlay');
         const tableName = tab ? "entrate" : "uscite";
         const trsOb = await trsObject(transazione, tableName);
-        await updateTrsLocal(trsOb, tableName);
-
-        if(isValid(ricorrenza)){
-            if(slider.checked && pSaved === pUpdated) updateRicorrenza(trsOb);
-            if(!slider.checked) deleteRicorrenza(ricorrenza);
-            if(pSaved !== pUpdated) updatePeriodo(trsOb, ricorrenza, pSaved);
-        }
+        await aggiornaMovimento(trsOb, tableName, previousId);
+        if (oldCategoria !== formCategoria) await switchRichieste(oldCategoria, formCategoria);
+        showToast('Transazione aggiornata', 'success');
 
         createCriteri();
     } catch (err) {

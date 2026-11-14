@@ -677,17 +677,18 @@ async function tracciaSpeseClick(criteri) {
         const listaTransazioniTotale = document.getElementById(trns.tot);
         const zeroTransazioni = document.getElementById(trns.zero);
 
+        const projects = !tabActive && transazioni.some(item => item.projectId) ? await getProjects() : [];
+        const projectNames = new Map(projects.map(project => [project.projectId, project.nome]));
         listaTransazioni.innerHTML = "";
         transazioni.forEach(trns => {
-          const nodo = creaSpesaComponent(trns,tabActive);
+          const nodo = creaSpesaComponent(trns, tabActive, projectNames.get(trns.projectId));
           listaTransazioni.appendChild(nodo);
         });
 
         const totale = creaComponentTotale(transazioni,tabActive);
         listaTransazioniTotale.innerHTML = "";
         zeroTransazioni.innerHTML = "";
-        const totaleText = totale.innerText.trim();
-        if(totaleText !== "0.00") {
+        if (transazioni.length > 0) {
             listaTransazioniTotale.appendChild(totale);
         }else {
         const nodo = nessunaElementoComponent(trns.tipo)

@@ -81,8 +81,8 @@
             </div>
             <div class="input-group">
                 <input type="text" id="descrizione" maxlength="45" placeholder="Descrizione">
-                <label class="project-field" hidden>Progetto
-                    <select name="projectId" disabled></select>
+                <label class="project-field" hidden>
+                    <select name="projectId" aria-label="Progetto" disabled></select>
                 </label>
                 <div class="ricorrenza-box">
                     <span class="ricorrenza-label">Ricorrente 🔁</span>
@@ -142,8 +142,8 @@
             </div>
             <div class="input-group">
                 <input type="text" id="editDescrizione" maxlength="35" placeholder="Descrizione">
-                <label class="project-field" hidden>Progetto
-                    <select name="projectId" disabled></select>
+                <label class="project-field" hidden>
+                    <select name="projectId" aria-label="Progetto" disabled></select>
                 </label>
                 <div class="ricorrenza-box">
                     <span class="ricorrenza-label">Ricorrente 🔁</span>
@@ -232,14 +232,14 @@
                 <input class="importoBudget" type="number" step="0.01" id="budgetImporto" placeholder="Importo" required>
             </div>
             <div class="input-group budget-fields">
-                <label>Progetto
-                    <select name="projectId"></select>
+                <label>
+                    <select name="projectId" aria-label="Progetto"></select>
                 </label>
                 <label data-new-project hidden>Nome progetto
                     <input name="projectName" maxlength="60" placeholder="Es. Lisbona" disabled>
                 </label>
-                <label>Periodo
-                    <select name="periodo">
+                <label>
+                    <select name="periodo" aria-label="Periodo">
                         <option value="">Singolo mese</option>
                         <option value="mensile">Ricorrente mensile</option>
                         <option value="annuale">Ricorrente annuale</option>
@@ -269,14 +269,14 @@
                 <input class="importoBudget" type="number" step="0.01" id="budgetImportoEdit" placeholder="Importo" required>
             </div>
             <div class="input-group budget-fields">
-                <label>Progetto
-                    <select name="projectId"></select>
+                <label>
+                    <select name="projectId" aria-label="Progetto"></select>
                 </label>
                 <label data-new-project hidden>Nome progetto
                     <input name="projectName" maxlength="60" placeholder="Es. Lisbona" disabled>
                 </label>
-                <label>Periodo
-                    <select name="periodo">
+                <label>
+                    <select name="periodo" aria-label="Periodo">
                         <option value="">Singolo mese</option>
                         <option value="mensile">Ricorrente mensile</option>
                         <option value="annuale">Ricorrente annuale</option>

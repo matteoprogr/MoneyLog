@@ -630,6 +630,8 @@ button {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+.spesa-progetto { display: block; overflow-wrap: anywhere; }
+
 .nessuna-spesa span { padding: 0.5rem 1rem; }
 .nessuna-spesa:hover { background-color: rgba(220, 220, 220, 0.3); color: #333; }
 
@@ -647,6 +649,7 @@ button {
   position: fixed;
   bottom: 6rem;
   left: 0;
+  z-index: 20;
   margin-left: 0.95rem;
   margin-right: 0.95rem;
   padding-bottom: 0.5rem;
@@ -937,7 +940,7 @@ input:checked + .slider:before { transform: translateX(2em); }
   transition: background-color 0.3s ease;
 }
 
-.importoBudget { margin-bottom: 0.5rem; }
+.importoBudget { margin-bottom: 0.0rem; }
 .budget-item:active { background: rgba(0,122,255,0.06); }
 
 .budget-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }

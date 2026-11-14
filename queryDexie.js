@@ -88,39 +88,20 @@ export async function saveRicorrenza(trsOb){
     await db.ricorrenze.add(ricOb);
 }
 
-export async function updatePeriodo(trsOb, ricorrenteId, periodoPrecedente){
-    initDB();
-    const split = ricorrenteId.split("%");
-    const oldRicorrenteId = periodoPrecedente + "%" + split[1];
-    if(getRicById(oldRicorrenteId))await deleteRicorrenza(oldRicorrenteId);
-    await saveRicorrenza(trsOb);
-}
-
-export async function updateRicorrenza(trsOb){
-    initDB();
-    const ricOb = {
-      descrizione: trsOb.descrizione,
-      importo: trsOb.importo,
-      categoria: trsOb.categoria,
-      data: trsOb.data,
-      projectId: trsOb.projectId,
-      ricorrenteId: trsOb.ricorrenteId
-    };
-
-    await db.ricorrenze.put(ricOb);
-}
-
-export async function deleteRicorrenza(ricorrenteId){
-    try{
-        initDB();
-        await db.ricorrenze.delete(ricorrenteId);
-    }catch(err){
-        console.log(err);
-    }
-}
-
-export async function getRicById(id){
-    return await db.ricorrenze.get(id);
+export async function aggiornaMovimento(movimento, collectionName, previousId) {
+    const database = initDB();
+    const collection = database.table(collectionName);
+    await database.transaction("rw", collection, database.ricorrenze, async () => {
+        const updated = await collection.update(movimento.id, movimento);
+        if (!updated) throw new Error("Movimento non trovato");
+        if (previousId && previousId !== movimento.ricorrenteId) {
+            await database.ricorrenze.delete(previousId);
+        }
+        if (movimento.ricorrenteId) {
+            const { descrizione, importo, categoria, data, projectId, ricorrenteId } = movimento;
+            await database.ricorrenze.put({ descrizione, importo, categoria, data, projectId, ricorrenteId });
+        }
+    });
 }
 
 export async function getRic(){
@@ -140,20 +121,15 @@ export async function checkRicorrenze(){
                 split[0] === "annuale" ? 12 :
                 null;
 
+            if (!periodo) continue;
             const currentDate = new Date(trs.data);
 
             for(let date = currentDate; date < today;  date = addMonths(date, periodo)){
                 const dataObject = date.toISOString().split('T')[0];
-                const criteri = {
-                  dataInizio: dataObject,
-                  dataFine: dataObject,
-                  importoMin: trs.importo,
-                  importoMax: trs.importo,
-                  categoria: trs.categoria
-                };
-                const exists = await queryTrns(criteri, trs.importo > 0);
-                if (exists.some(item => item.ricorrenteId === trs.ricorrenteId ||
-                    (!item.ricorrenteId && (item.projectId ?? null) === (trs.projectId ?? null)))) continue;
+                const exists = await queryTrns({ dataInizio: dataObject, dataFine: dataObject }, trs.importo > 0);
+                if (exists.some(item => item.ricorrenteId?.split("%")[1] === split[1] ||
+                    (!item.ricorrenteId && item.importo === trs.importo && item.categoria === trs.categoria &&
+                        (item.projectId ?? null) === (trs.projectId ?? null)))) continue;
                 const tableName = trs.importo > 0 ? "entrate" : "uscite";
                 const ricTrs = { ...trs, data: dataObject };
                 const trsOb = await trsObject(ricTrs, tableName);
@@ -169,7 +145,6 @@ export async function checkRicorrenze(){
 
 export async function checkRicorrenzeBudgetMensile(){
     const periodo = "mensile";
-    const budgets = await getBudgetsByPeriodo(periodo);
 
     const now = new Date();
     const year = now.getFullYear();
@@ -178,28 +153,38 @@ export async function checkRicorrenzeBudgetMensile(){
     const dataInizio = formatDateYMD(new Date(year, month, 1));
     const dataFine   = formatDateYMD(new Date(year, month + 1, 0));
 
-    await rinnovaBudget(budgets, dataInizio, dataFine, periodo);
+    await rinnovaBudget(dataInizio, dataFine, periodo);
 }
 
 
 export async function checkRicorrenzeBudgetAnnuale(){
     const periodo = "annuale";
-    const budgets = await getBudgetsByPeriodo(periodo);
     const year = new Date().getFullYear();
     const dataInizio = formatDateYMD(new Date(year, 0, 1));
     const dataFine   = formatDateYMD(new Date(year, 11, 31));
 
-    await rinnovaBudget(budgets, dataInizio, dataFine, periodo);
+    await rinnovaBudget(dataInizio, dataFine, periodo);
 }
 
-async function rinnovaBudget(budgets, dataInizio, dataFine, periodo) {
+async function rinnovaBudget(dataInizio, dataFine, periodo) {
     const oggi = formatDateYMD(new Date());
     await initDB().transaction("rw", db.budget, db.progetti, async () => {
+        const budgets = await getBudgetsByPeriodo(periodo);
+        const archived = new Set();
         for (const budget of budgets.sort((a, b) => b.data.localeCompare(a.data))) {
-            if (budget.data > oggi) continue;
+            if (archived.has(budget.budgetId)) continue;
+            if (budget.data > oggi || budget.ricorrenzaArchiviata) continue;
             const existing = await getBudgets(dataInizio, dataFine, budget.categoria, periodo);
-            if (existing.some(item => (item.projectId ?? null) === (budget.projectId ?? null))) continue;
-            await createBudget({ ...budget, budgetId: crypto.randomUUID(), data: oggi });
+            const seriesId = budget.serieBudgetId ?? budget.budgetId;
+            const sameSeries = item => budget.serieBudgetId
+                ? item.serieBudgetId === seriesId
+                : !item.serieBudgetId && (item.projectId ?? null) === (budget.projectId ?? null);
+            if (existing.some(sameSeries)) continue;
+            await db.budget.update(budget.budgetId, { serieBudgetId: seriesId, ricorrenzaArchiviata: true });
+            if (!budget.serieBudgetId) {
+                for (const id of await archiviaBudgetPrecedenti(budget, seriesId)) archived.add(id);
+            }
+            await createBudget({ ...budget, budgetId: crypto.randomUUID(), serieBudgetId: seriesId, ricorrenzaArchiviata: false, data: oggi });
         }
     });
 }
@@ -718,11 +703,31 @@ export async function createBudget(budget) {
     return saveBudget(budget, false);
 }
 
+async function archiviaBudgetPrecedenti(budget, seriesId) {
+    const ids = await db.budget.where("periodo").equals(budget.periodo).filter(item =>
+        !item.serieBudgetId && item.budgetId !== budget.budgetId && item.data < budget.data &&
+        item.categoria === budget.categoria && (item.projectId ?? null) === (budget.projectId ?? null)
+    ).primaryKeys();
+    await db.budget.where("budgetId").anyOf(ids).modify({ serieBudgetId: seriesId, ricorrenzaArchiviata: true });
+    return ids;
+}
+
 async function saveBudget({ projectName, ...budget }, edit) {
     return initDB().transaction("rw", db.budget, db.progetti, async () => {
         if (projectName) budget.projectId = await resolveProject(projectName);
         budget.categoria = capitalizeFirstLetter(budget.categoria);
         budget.usato = 0;
+        if (edit) {
+            const previous = await db.budget.get(budget.budgetId);
+            if (!previous) throw new Error("Budget non trovato");
+            budget.serieBudgetId = previous.serieBudgetId;
+            budget.ricorrenzaArchiviata = previous.ricorrenzaArchiviata;
+            if (!previous.serieBudgetId && ["mensile", "annuale"].includes(previous.periodo)) {
+                budget.serieBudgetId = previous.budgetId;
+                await archiviaBudgetPrecedenti(previous, budget.serieBudgetId);
+            }
+        }
+        if (["mensile", "annuale"].includes(budget.periodo)) budget.serieBudgetId ??= budget.budgetId;
         await db.budget[edit ? "put" : "add"](budget);
     });
 }

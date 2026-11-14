@@ -331,7 +331,8 @@ const option = {
     axisTick: { alignWithLabel: true }
   },
   yAxis: {
-    type: 'value'
+    type: 'value',
+    min: ({ min }) => min < 0 ? Math.floor(min * 1.1 * 100) / 100 : 0
   },
   series: [
     {

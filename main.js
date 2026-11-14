@@ -332,7 +332,7 @@ const option = {
   },
   yAxis: {
     type: 'value',
-    min: ({ min }) => min < 0 ? Math.floor(min * 1.1 * 100) / 100 : 0
+    min: ({ min }) => min < 0 ? Math.floor(min * 11 / 100) * 10 : 0
   },
   series: [
     {

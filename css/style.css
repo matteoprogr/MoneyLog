@@ -1020,6 +1020,9 @@ input:checked + .slider:before { transform: translateX(2em); }
   font: inherit;
 }
 
+.project-search-field:not([hidden]) { margin-inline: 0.5rem; }
+#ricerca-progetto { box-sizing: border-box; }
+
 .budget-dates:not([hidden]) {
   display: flex;
   flex-wrap: wrap;

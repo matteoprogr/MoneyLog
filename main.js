@@ -19,6 +19,8 @@ document.getElementById("deleteCategoriaBtn").addEventListener("click", deleteCa
 document.getElementById("deleteBudgetBtn").addEventListener("click", deleteBudgetBtn);
 document.getElementById("importoMinEntrata").addEventListener("input", createCriteri);
 document.getElementById("importoMaxEntrata").addEventListener("input", createCriteri);
+const ricercaProgetto = document.getElementById("ricerca-progetto");
+ricercaProgetto.addEventListener("change", createCriteri);
 document.getElementById("ricerca-categorie").addEventListener("input", categorieCreateComponent);
 document.getElementById("indietro").addEventListener("click", function(event) {  setDirezioneData(event, "date-range", "indietro"); });
 document.getElementById("avanti").addEventListener("click", function(event) { setDirezioneData(event,  "date-range", "avanti"); });
@@ -729,13 +731,18 @@ export function isValid(value) {
 }
 
 export async function createCriteri() {
-    let criteri = {};
+    const criteri = {};
     const tab = recuperaTab();
+    ricercaProgetto.disabled = tab !== false;
+    ricercaProgetto.closest("label").hidden = ricercaProgetto.disabled;
+    if (!ricercaProgetto.disabled && ricercaProgetto.value) {
+        criteri.projectId = ricercaProgetto.value;
+    }
     let min = 0;
     let max = 0;
     const selectedCards = document.querySelectorAll('.card.selected');
     if (selectedCards.length > 0) {
-     criteri = { categoria: [] };
+     criteri.categoria = [];
      selectedCards.forEach(card => {
         criteri.categoria.push(card.innerText.trim());
      });
@@ -774,6 +781,7 @@ export async function createCriteri() {
 }
 
 async function pulisci(){
+    ricercaProgetto.value = "";
     document.getElementById("importoMaxEntrata").value = "";
     document.getElementById("importoMinEntrata").value = "";
     document.getElementById("importoMaxEntrata").value = "";

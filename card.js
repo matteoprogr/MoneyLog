@@ -332,9 +332,9 @@ export function compBudget(budget){
 
 const NEW_PROJECT = 'new-project';
 
-async function populateProjects(select, selected = '', allowCreate = false) {
+async function populateProjects(select, selected = '', allowCreate = false, emptyLabel = 'Nessun progetto') {
     const projects = await getProjects();
-    select.replaceChildren(new Option('Nessun progetto', ''));
+    select.replaceChildren(new Option(emptyLabel, ''));
     for (const project of projects) {
         select.add(new Option(project.nome, project.projectId));
     }
@@ -578,6 +578,7 @@ export async function overlayRicerca() {
     const overlay = document.getElementById('overlayRicerca');
     const catRow = document.getElementById('categorieCardsEntrata');
     const categoriaInput = document.getElementById('ricerca-categorie-over');
+    const progetto = document.getElementById('ricerca-progetto');
     let selectedCards = document.querySelectorAll(".card.selected");
 
     openBtn.addEventListener('click', async (e) => {
@@ -586,7 +587,8 @@ export async function overlayRicerca() {
         } else {
             selectedCards = document.querySelectorAll(".card.selected");
             catRow.innerHTML = "";
-            overlay.classList.toggle("showOverlay");
+            await populateProjects(progetto, progetto.value, false, "Tutti i progetti");
+            overlay.classList.add("showOverlay");
             const categorie = await getCategorie();
             categorie.forEach(cat => {
             const card = catOverlay(cat.categoria, "getSpese",selectedCards);

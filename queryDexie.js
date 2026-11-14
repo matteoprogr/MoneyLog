@@ -22,6 +22,9 @@ export function initDB() {
     });
 
     db.version(2).stores({ progetti: 'projectId, &chiave' });
+    db.version(3).upgrade(transaction => transaction.table('progetti').toCollection().modify(project => {
+        project.nome = capitalizeFirstLetter(project.nome);
+    }));
 
     initCategorie();
   }
@@ -703,7 +706,7 @@ export function getProjects() {
 }
 
 async function resolveProject(nome, projectId = crypto.randomUUID()) {
-    nome = nome.trim();
+    nome = capitalizeFirstLetter(nome.trim());
     const chiave = nome.toLocaleLowerCase("it");
     const existing = await db.progetti.get({ chiave });
     if (existing) return existing.projectId;

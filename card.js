@@ -1,11 +1,9 @@
-import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, removeId, saveRicorrenza, updateRicorrenza, deleteRicorrenza, updatePeriodo } from './queryDexie.js';
+import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, saveRicorrenza, updateRicorrenza, deleteRicorrenza, updatePeriodo } from './queryDexie.js';
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
 import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget } from './queryDexie.js';
 import { categorieCreateComponent, parseDateRange, convertDDMMYYYYtoDate } from './main.js';
-import { getUser } from './main.js';
-import { insertTrs, updateTrs } from './supaSync.js';
 
 export function creaSpesaComponent(trsn,tabActive) {
 
@@ -568,17 +566,9 @@ openBtn.addEventListener('click', async (e) => {
 
         try {
             overlay.classList.remove('showOverlay');
-            const user = await getUser();
-            let trsOb;
-        if(!tab){
-            trsOb = await trsObject(transazione, "uscite");
-            await saveTrsLocal(trsOb, "uscite");
-            if(isValid(user)) insertTrs(await removeId(trsOb), "uscite");
-        }else if(tab){
-            trsOb = await trsObject(transazione, "entrate");
-            await saveTrsLocal(trsOb, "entrate")
-            if(isValid(user)) insertTrs(await removeId(trsOb), "entrate");
-        }
+            const tableName = tab ? "entrate" : "uscite";
+            const trsOb = await trsObject(transazione, tableName);
+            await saveTrsLocal(trsOb, tableName);
             if(isValid(ricorrenza)) saveRicorrenza(trsOb);
             saveCategoria(trsOb.categoria);
             createCriteri();
@@ -856,17 +846,9 @@ export async function overlayEdit(spesa) {
      };
     try {
         overlay.classList.remove('showOverlay');
-        const user = await getUser();
-        let trsOb;
-        if(!tab){
-            trsOb = await trsObject(transazione, "uscite");
-            await updateTrsLocal(trsOb, "uscite");
-            if(isValid(user)) updateTrs(await removeId(trsOb), "uscite");
-        }else if(tab){
-            trsOb = await trsObject(transazione, "entrate");
-            await updateTrsLocal(trsOb, "entrate");
-            if(isValid(user)) updateTrs(await removeId(trsOb), "entrate");
-        }
+        const tableName = tab ? "entrate" : "uscite";
+        const trsOb = await trsObject(transazione, tableName);
+        await updateTrsLocal(trsOb, tableName);
 
         if(isValid(ricorrenza)){
             if(slider.checked && pSaved === pUpdated) updateRicorrenza(trsOb);

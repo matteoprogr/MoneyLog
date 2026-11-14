@@ -1,10 +1,7 @@
 import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
-        deleteSpese, saveDeletedTrs, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
+        deleteSpese, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
         categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
-
-import { syncDati, deleteTrs } from './supaSync.js';
-
 
 /////////  SERVICE WORKER ////////////////
 if ('serviceWorker' in navigator) {
@@ -14,20 +11,6 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.log('Service Worker registration failed:', err));
   });
 }
-
-
-///// supabase client /////
-let supabaseClient = null;
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-const supabaseUrl = 'https://xheobxtzijhgfuhqhnyi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoZW9ieHR6aWpoZ2Z1aHFobnlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMjMyNjAsImV4cCI6MjA4Mzc5OTI2MH0.BwMxGvMJ_d8pmN6nPCOL_NP2qtWzlmgkkLqvuf4RiyA';
-supabaseClient = createClient(supabaseUrl, supabaseKey);
-
-export async function getSupaClient(){
-return supabaseClient;
-}
-
-
 
 
 //  EVENT LISTENER //////////////////////////////////
@@ -44,9 +27,6 @@ document.getElementById("avantiGraph").addEventListener("click", function(event)
 document.getElementById("indietroBudget").addEventListener("click", function(event) { setDirezioneData(event, "date-range-budget", "indietroBudget"); });
 document.getElementById("avantiBudget").addEventListener("click", function(event) { setDirezioneData(event, "date-range-budget", "avantiBudget"); });
 document.getElementById("addCategoriaBtn").addEventListener("click", saveNewCategoria);
-document.getElementById('sign-in').addEventListener('click', loginWithGoogle);
-document.getElementById('sign-out').addEventListener('click', logout);
-document.getElementById('btnSync').addEventListener('click', syncDati);
 document.getElementById('pulisci').addEventListener('click', pulisci);
 
 
@@ -104,8 +84,6 @@ document.querySelectorAll('nav a').forEach(link => {
 
 // DOM CONTENT LOADED ///////////////////////////////
 document.addEventListener("DOMContentLoaded", () => {
-    getSupaClient();
-    checkAuth();
     targetId = "movimenti";
     overlayAddSpesa();
     overlayRicerca();
@@ -1033,12 +1011,6 @@ async function deleteSpesaBtn() {
 
         await deleteSpese(criteri, tab);
 
-        const user = await getUser();
-        const tableName = tab === false ? "uscite" : "entrate";
-        isValid(user) && await Promise.all(criteri.map(date => deleteTrs(date, tableName)));
-
-        await saveDeletedTrs(criteri);
-
         for (const card of selectedCards) {
             const categoria = card.querySelector(".categoria");
             const oldValue = categoria.innerText;
@@ -1151,86 +1123,4 @@ export function showErrorToast(message,type = "error") {
     toast.classList.remove("show");
     setTimeout(() => toast.remove(), 400);
   }, 3000);
-}
-
-
-//// AUTENTICAZIONE ///////
-let currentUser = null;// variabile globale contenente i dati dell' user corrente
-
-
-// Metodo per autenticazione utente taite supabase auth
-// In caso di errore viene restitito un toast e loggato l'errore
-export async function checkAuth(){
-    try{
-        const { data: {session } , error } = await supabaseClient.auth.getSession();
-        if(error){
-            console.error("❌ Errore controllo sessione:", error);
-            showToast("Errore nella sessione", "error");
-            return null;
-        }
-        if(session && session.user){
-            console.log("✅ Utente autenticato:", session.user.email);
-            currentUser = session.user;
-            showUserSection(true);
-            return currentUser;
-        }else{
-            showUserSection(false);
-            return null;
-        }
-    }catch(error){
-    console.error("Errore durante checkAuth", error);
-    }
-}
-
-// Metodo di accesso OAuth third-party provider tramite google
-async function loginWithGoogle() {
-  const { data, error } = await supabaseClient.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-     redirectTo: 'https://matteoprogr.github.io/MoneyLog/'
-    }
-  });
-  if (error) console.error('Login error:', error);
-}
-
-async function showUserSection(isAuth){
-    const loginSection = document.querySelector('.login-section');
-    const userSection = document.querySelector('.user-section');
-    const logoutSection = document.querySelector('.logout-section');
-    if(isAuth){
-        loginSection.classList.add("hidden");
-        logoutSection.classList.remove("hidden");
-    }else{
-        loginSection.classList.remove("hidden");
-        logoutSection.classList.add("hidden");
-    }
-}
-
-// Metodo di logout
-async function logout() {
-  const { error } = await supabaseClient.auth.signOut()
-  if (error) {
-    console.error('Errore logout:', error.message)
-  }
-  currentUser = null;
-  await checkAuth();
-}
-
-export async function getUser(){
-    try{
-        if(isValid(currentUser) && isValid(currentUser.id)) {
-            return currentUser;
-        }else{
-            const user = await checkAuth();
-            if(isValid(user) && isValid(user.id)) {
-                currentUser = user;
-            }else{
-                return null;
-            }
-        }
-        return currentUser;
-    }catch(error){
-        console.log("Errore durante recupero user", error);
-        throw error;
-    }
 }

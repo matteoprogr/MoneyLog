@@ -1,54 +1,45 @@
-const CACHE_NAME = 'moneylog-cache-v35';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/styles.css?v=24',
-  '/main.js?v=24',
-  '/icons/icon-192.png',
-  '/libs/dexie.mjs',
-  '/libs/echarts.min.js',
-  '/libs/flatpickr.min.css',
-  '/libs/flatpickr.js',
-  '/libs/flatpickr_it.js'
+const CACHE_NAME = 'moneylog-cache-v36';
+const APP_SHELL = [
+  './index.html',
+  './manifest.json',
+  './css/style.css',
+  './main.js',
+  './card.js',
+  './queryDexie.js',
+  './favicon.ico',
+  './icons/icon-192.png',
+  './libs/dexie.mjs',
+  './libs/echarts.min.js',
+  './libs/flatpickr.min.css',
+  './libs/flatpickr.js',
+  './libs/flatpickr_it.js'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting())
-  );
+  const requests = APP_SHELL.map(path => new Request(
+    new URL(path, self.registration.scope), { cache: 'reload' }
+  ));
+  event.waitUntil(caches.open(CACHE_NAME)
+    .then(cache => cache.addAll(requests))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.map(key => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      )
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil(caches.keys()
+    .then(keys => Promise.all(keys
+      .filter(key => key.startsWith('moneylog-cache-') && key !== CACHE_NAME)
+      .map(key => caches.delete(key))))
+    .then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', event => {
-  if (!event.request.url.startsWith(self.location.origin)) return;
+  const { request } = event;
+  if (request.method !== 'GET' || !request.url.startsWith(self.registration.scope)) return;
 
-  event.respondWith(
-    caches.open(CACHE_NAME).then(cache =>
-      cache.match(event.request).then(response => {
-        const fetchPromise = fetch(event.request).then(networkResponse => {
-          if (networkResponse.ok) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(() => null);
-
-        return response || fetchPromise;
-      })
-    )
-  );
+  event.respondWith(caches.open(CACHE_NAME).then(async cache => {
+    const url = request.mode === 'navigate'
+      ? new URL('./index.html', self.registration.scope).href
+      : request;
+    return (await cache.match(url)) || fetch(request);
+  }));
 });

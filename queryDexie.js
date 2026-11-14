@@ -1,7 +1,6 @@
 import Dexie from './libs/dexie.mjs';
 
-import { isValid, getUser, showErrorToast, showToast } from './main.js';
-import { insertTrs, deleteTrs, updateTrs } from './supaSync.js';
+import { isValid, showErrorToast, showToast } from './main.js';
 
 
 let db;
@@ -67,11 +66,6 @@ export async function trsObject(trs, collectionName){
     }catch(err){
         console.log("Errore durante mapping transazione", err);
     }
-}
-
-export async function removeId(trsOb){
-    delete trsOb.id;
-    return trsOb
 }
 
 export async function saveRicorrenza(trsOb){
@@ -155,8 +149,6 @@ export async function checkRicorrenze(){
                 const ricTrs = { ...trs, data: dataObject };
                 const trsOb = await trsObject(ricTrs, tableName);
                 await saveTrsLocal(trsOb, tableName);
-                const user = await getUser();
-                if(isValid(user)) await insertTrs(trsOb, tableName);
             }
         }
     }catch(err){
@@ -241,17 +233,6 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-
-
-export async function getDeleted(){
-    initDB();
-    return await db.deletedTrs.toArray();
-}
-
-export async function deleteCheckedDeleted(){
-    initDB();
-    return await db.deletedTrs.clear();
-}
 
 
 async function setDescrizione(descrizione, categoria){
@@ -374,19 +355,6 @@ export async function queryTrns(criteri = {}, tabActive) {
 }
 
 
-export async function getTrsByDataIns(collectionName, dataInserimento) {
-  const collection = db[collectionName];
-  if (!collection) throw new Error(`Collection ${collectionName} non trovata`);
-
-  const transaction = await collection
-    .where('dataInserimento')
-    .equals(dataInserimento)
-    .first();
-
-  return transaction || null;
-}
-
-
 ////////////////  ELIMINAZIONE TRANSAZIONI ////////////////////////////////
 export async function deleteSpese(criteri = {}, tabActive) {
 
@@ -401,10 +369,6 @@ export async function deleteSpese(criteri = {}, tabActive) {
     if (Array.isArray(criteri) && criteri.length > 0) {
         await  collezione.filter(trns => criteri.includes(trns.dataInserimento)).delete();
     }
-}
-
-export async function saveDeletedTrs(criteri){
-    await db.deletedTrs.bulkAdd( criteri.map(dataInserimento => ({ dataInserimento })) );
 }
 
 //////////// DELETE CATEGORIE /////////////////

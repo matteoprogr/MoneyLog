@@ -633,7 +633,8 @@ export async function categorieCreateComponent() {
         saveBtn.classList.add('addCategoria');
     }
 
-    const categorie = await getCategorie(catInput);
+    const [categorie, colors] = await Promise.all([getCategorie(catInput), getCategoryColors()]);
+    if (document.getElementById("ricerca-categorie").value !== catInput) return;
     const categorieList = document.getElementById("gestione-categorie");
     const zeroCategorie = document.getElementById("zero-categorie");
     zeroCategorie.innerHTML = "";
@@ -643,7 +644,7 @@ export async function categorieCreateComponent() {
         zeroCategorie.appendChild(nodo);
     }else{
         categorie.forEach(cat => {
-          const nodo = categoriaComponent(cat.categoria, cat.richieste);
+          const nodo = categoriaComponent(cat.categoria, cat.richieste, colors.get(cat.categoria));
           categorieList.appendChild(nodo);
         });
     }

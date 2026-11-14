@@ -866,6 +866,36 @@ button {
   box-shadow: none;
 }
 .settings-confirm .modal-actions button.btn-danger { background: #b83242; color: #fff; }
+.category-color-trigger {
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  flex: 0 0 auto;
+  margin: 0 0.6rem 0 0;
+  border-radius: 50%;
+}
+.category-color-trigger + .cat-name { margin-right: auto; }
+#category-color-dialog::backdrop { background: rgb(23 38 58 / 38%); }
+.category-color-preview { display: flex; align-items: center; gap: 0.55rem; }
+.category-color-preview span { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
+.category-color-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2rem, 1fr));
+  gap: 0.4rem;
+  margin: 0.8rem 0;
+}
+.category-color-palette button {
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 50%;
+  --swatch: #edf2f7;
+  background: var(--swatch);
+}
+.category-color-palette button[aria-pressed="true"] { outline: 2px solid #263445; outline-offset: 2px; }
+.category-color-palette button:disabled { opacity: 0.3; cursor: default; }
+#category-color-dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+#category-color-more:disabled { opacity: 0.55; cursor: default; }
+
 #confirmModal { background: rgb(23 38 58 / 38%); }
 #project-delete-dialog::backdrop { background: rgb(0 0 0 / 35%); }
 

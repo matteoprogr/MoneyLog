@@ -229,7 +229,7 @@ async function setDescrizione(descrizione, categoria){
 
 /////////// SALVATAGGIO CATEGORIE //////////////////////
 
-const CATEGORY_PALETTE = [
+export const CATEGORY_PALETTE = [
     "#2975c6", "#d93d38", "#209452", "#e4b500", "#813cc1", "#00a8ad",
     "#ea7121", "#c52c82", "#96aa27", "#31528d", "#a14b2d", "#2bbdc7",
     "#ee6481", "#147d74", "#e8ce56", "#6761d9", "#719f43", "#883e63",
@@ -250,33 +250,59 @@ function coordinateColore(color) {
         0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
 }
 
-function prossimoColore(used) {
-    const available = CATEGORY_PALETTE.find(color => !used.has(color));
-    if (available) return available;
+let colorCandidates;
 
-    // Maximize the nearest distance in OKLab across a grid of saturated colors.
-    const assigned = [...used].map(coordinateColore);
-    let best, bestDistance = -1;
+function getColorCandidates() {
+    if (colorCandidates) return colorCandidates;
+    colorCandidates = [];
     for (let r = 24; r <= 248; r += 32) {
         for (let g = 24; g <= 248; g += 32) {
             for (let b = 24; b <= 248; b += 32) {
                 if (Math.max(r, g, b) - Math.min(r, g, b) < 64) continue;
                 const color = "#" + [r, g, b].map(value => value.toString(16).padStart(2, "0")).join("");
-                if (used.has(color)) continue;
-                const point = coordinateColore(color);
-                let nearest = Infinity;
-                for (const other of assigned) {
-                    const distance = (point[0] - other[0]) ** 2 + (point[1] - other[1]) ** 2 + (point[2] - other[2]) ** 2;
-                    nearest = Math.min(nearest, distance);
-                    if (nearest <= bestDistance) break;
-                }
-                if (nearest > bestDistance) {
-                    best = color;
-                    bestDistance = nearest;
-                }
+                colorCandidates.push({ color, point: coordinateColore(color) });
             }
         }
     }
+    return colorCandidates;
+}
+
+function colorDistanceSquared(a, b) {
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+}
+
+function selectDistinctColors(used, count, minDistance) {
+    const assigned = [...used].map(coordinateColore);
+    const candidates = getColorCandidates()
+        .filter(({ color }) => !used.has(color))
+        .map(({ color, point }) => ({
+            color,
+            point,
+            nearest: assigned.reduce((min, other) => Math.min(min, colorDistanceSquared(point, other)), Infinity)
+        }));
+    const result = [];
+    while (result.length < count && candidates.length) {
+        const bestIndex = candidates.reduce((best, item, index) =>
+            item.nearest > candidates[best].nearest ? index : best, 0);
+        if (candidates[bestIndex].nearest < minDistance ** 2) break;
+        const [best] = candidates.splice(bestIndex, 1);
+        result.push(best.color);
+        for (const candidate of candidates) {
+            candidate.nearest = Math.min(candidate.nearest, colorDistanceSquared(candidate.point, best.point));
+        }
+    }
+    return result;
+}
+
+export function getMoreCategoryColors(used) {
+    return selectDistinctColors(used, 6, 0.065);
+}
+
+function prossimoColore(used) {
+    const available = CATEGORY_PALETTE.find(color => !used.has(color));
+    if (available) return available;
+
+    const [best] = selectDistinctColors(used, 1, 0);
     if (best) return best;
     for (let rgb = 1; rgb < 0xffffff; rgb++) {
         const color = "#" + rgb.toString(16).padStart(6, "0");
@@ -322,8 +348,30 @@ export async function getCategoryColors(names = []) {
     });
 }
 
+export async function getAutomaticCategoryColor() {
+    const colors = await getCategoryColors();
+    return prossimoColore(new Set(colors.values()));
+}
+
+export async function saveCategoryColor(categoria, colore) {
+    if (!/^#[0-9a-f]{6}$/.test(colore) || colore === "#000000" || colore === "#ffffff") {
+        throw new Error("Colore non valido");
+    }
+    const database = initDB();
+    return database.transaction("rw", database.categorie, database.coloriCategorie, async () => {
+        if (!await database.categorie.get(categoria)) throw new Error("Categoria non trovata");
+        const owner = await database.coloriCategorie.get({ colore });
+        if (owner && owner.categoria !== categoria) throw new Error("Colore già assegnato");
+        await database.coloriCategorie.put({ categoria, colore });
+    });
+}
+
 async function initSaveCategoria(categoria){
-    await db.categorie.add({ categoria: categoria, richieste: 0 });
+    await db.transaction("rw", db.categorie, db.coloriCategorie, async () => {
+        if (await db.categorie.get(categoria)) return;
+        await db.categorie.add({ categoria, richieste: 0 });
+        await assegnaColoriCategorie([{ categoria }]);
+    });
 }
 
 export async function saveCategoria(categoria, richiesta) {
@@ -332,15 +380,15 @@ export async function saveCategoria(categoria, richiesta) {
   richiesta = richiesta === 0 ? 0 : 1
   try {
 
-    const cat = await db.categorie.get(categoriaCapitalized);
-    if(!isValid(cat)){
-    await db.categorie.add({
-        categoria: categoriaCapitalized,
-        richieste: richiesta
-         });
-    }else{
-        await updateRichieste(null, "more", cat);
-    }
+    await db.transaction("rw", db.categorie, db.coloriCategorie, async () => {
+        const cat = await db.categorie.get(categoriaCapitalized);
+        if (!cat) {
+            await db.categorie.add({ categoria: categoriaCapitalized, richieste: richiesta });
+            await assegnaColoriCategorie([{ categoria: categoriaCapitalized }]);
+        } else {
+            await updateRichieste(null, "more", cat);
+        }
+    });
 
   } catch (error) {
       showErrorToast('Errore durante l\'aggiunta della categoria', "error");
@@ -532,7 +580,9 @@ export async function replaceCat(oldCat, newCat) {
   const oldArr = await getCategorieEsatta(oldCat);
   if (!oldArr || oldArr.length === 0) return;
   const record = oldArr[0];
-  if(!await db.categorie.get(newCat)) await saveCategoria(newCat, record.richieste);
+  if (!await db.categorie.get(newCat)) {
+      await db.categorie.add({ categoria: newCat, richieste: record.richieste ? 1 : 0 });
+  }
   const newArr = await getCategorieEsatta(newCat);
   const recordNew = newArr[0];
   await updateCatInTrns(record, recordNew);

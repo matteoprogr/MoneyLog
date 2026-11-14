@@ -2,7 +2,7 @@ import { updateTrsLocal, aggiungiMovimento, saveCategoria, trsObject, aggiornaMo
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
-import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget, getProjects } from './queryDexie.js';
+import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget, getProjects, CATEGORY_PALETTE, getCategoryColors, getAutomaticCategoryColor, getMoreCategoryColors, saveCategoryColor } from './queryDexie.js';
 import { categorieCreateComponent, parseDateRange, convertDDMMYYYYtoDate } from './main.js';
 
 export function creaSpesaComponent(trsn, tabActive, projectName) {
@@ -163,7 +163,94 @@ export function nessunBudgetComponent(tipo) {
 }
 
 
-export function categoriaComponent(categoria, richieste) {
+let colorDialogRequest = 0;
+
+async function openCategoryColor(categoria) {
+    const request = ++colorDialogRequest;
+    const dialog = document.getElementById("category-color-dialog");
+    const form = dialog.querySelector("form");
+    const save = form.querySelector('[value="save"]');
+    const automatic = document.getElementById("category-color-auto");
+    const more = document.getElementById("category-color-more");
+    const status = document.getElementById("category-color-status");
+
+    try {
+        const colors = await getCategoryColors([categoria]);
+        if (request !== colorDialogRequest || dialog.open) return;
+        const current = colors.get(categoria);
+        const reserved = new Set([...colors].filter(([name]) => name !== categoria).map(([, color]) => color));
+        const palette = dialog.querySelector(".category-color-palette");
+        const preview = dialog.querySelector(".category-color-preview");
+        let selected = current;
+        const choices = new Set([...CATEGORY_PALETTE, current]);
+
+        function renderChoices() {
+            preview.querySelector("span").style.backgroundColor = selected;
+            preview.querySelector("output").textContent = "Anteprima " + selected.toUpperCase();
+            palette.replaceChildren(...[...choices].map(color => {
+                const swatch = document.createElement("button");
+                swatch.type = "button";
+                swatch.disabled = reserved.has(color);
+                swatch.style.setProperty("--swatch", color);
+                swatch.setAttribute("aria-label", color.toUpperCase() + (swatch.disabled ? " già assegnato" : ""));
+                swatch.setAttribute("aria-pressed", color === selected);
+                swatch.addEventListener("click", () => {
+                    selected = color;
+                    renderChoices();
+                    palette.querySelector('[aria-pressed="true"]')?.focus();
+                });
+                return swatch;
+            }));
+        }
+
+        document.getElementById("category-color-title").textContent = "Colore · " + categoria;
+        renderChoices();
+        more.disabled = false;
+        status.hidden = true;
+        status.textContent = "";
+        more.onclick = () => {
+            const extra = getMoreCategoryColors(new Set([...choices, ...reserved]));
+            for (const color of extra) choices.add(color);
+            if (extra.length) renderChoices();
+            if (extra.length < 6) {
+                more.disabled = true;
+                status.hidden = false;
+                status.textContent = "Non ci sono altri colori abbastanza distinti.";
+            }
+        };
+        automatic.onclick = async () => {
+            try {
+                const color = await getAutomaticCategoryColor();
+                if (!dialog.open || request !== colorDialogRequest) return;
+                choices.add(color);
+                selected = color;
+                renderChoices();
+            } catch (error) {
+                showErrorToast(error.message);
+            }
+        };
+        form.onsubmit = async event => {
+            if (event.submitter?.value === "cancel") return;
+            event.preventDefault();
+            if (save.disabled) return;
+            save.disabled = true;
+            try {
+                await saveCategoryColor(categoria, selected);
+                dialog.close();
+                await categorieCreateComponent();
+            } catch (error) {
+                showErrorToast(error.message);
+            } finally {
+                save.disabled = false;
+            }
+        };
+        dialog.showModal();
+    } catch (error) {
+        showErrorToast(error.message);
+    }
+}
+
+export function categoriaComponent(categoria, richieste, color) {
     const container = document.createElement("div");
     container.classList.add("cat");
     let pressTimer;
@@ -185,7 +272,8 @@ export function categoriaComponent(categoria, richieste) {
     `;
 
     const span = container.querySelector('.cat-name');
-    container.addEventListener("pointerdown", () => {
+    container.addEventListener("pointerdown", event => {
+        if (event.target.closest(".category-color-trigger")) return;
         pressTimer = setTimeout(() => {
             const input = document.createElement("input");
             input.type = "text";
@@ -239,6 +327,16 @@ export function categoriaComponent(categoria, richieste) {
     });
 }
 
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.className = "category-color-trigger";
+    swatch.style.backgroundColor = color;
+    swatch.setAttribute("aria-label", "Cambia colore di " + categoria);
+    swatch.addEventListener("click", event => {
+        event.stopPropagation();
+        openCategoryColor(categoria);
+    });
+    container.querySelector(".cat-header").prepend(swatch);
     return container;
 }
 

@@ -385,6 +385,18 @@
         <div id="zero-categorie"></div>
         <div id="gestione-categorie"></div>
     </div>
+    <dialog class="settings-confirm" id="category-color-dialog" aria-labelledby="category-color-title">
+        <h3 id="category-color-title"></h3>
+        <p class="category-color-preview"><span aria-hidden="true"></span> <output></output></p>
+        <div class="category-color-palette" role="group" aria-label="Colori disponibili"></div>
+        <button type="button" id="category-color-more">Mostra altri colori</button>
+        <p id="category-color-status" role="status" hidden></p>
+        <button type="button" id="category-color-auto">Assegna automaticamente</button>
+        <form class="modal-actions" method="dialog">
+            <button type="submit" value="cancel">Annulla</button>
+            <button type="submit" value="save">Salva</button>
+        </form>
+    </dialog>
     <div class="fullscreenBtnContainer">
         <button class="fullscreenBtn" id="deleteCategoriaBtn">🗑️</button>
     </div>

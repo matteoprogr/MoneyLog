@@ -1003,6 +1003,40 @@ input:checked + .slider:before { transform: translateX(2em); }
 #budgetFormOverlay.showOverlay,
 #budgetFormOverlayEdit.showOverlay { transform: translateY(0); opacity: 1; pointer-events: auto; }
 
+.project-field:not([hidden]),
+.budget-fields label:not([hidden]) {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.35rem 0;
+}
+
+.project-field select,
+.budget-fields select {
+  width: 100%;
+  padding: 0.45rem;
+  border: 1px solid #ccc;
+  border-radius: 0.425rem;
+  background: #fff;
+  font: inherit;
+}
+
+.budget-dates:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+#budgetFormOverlay,
+#budgetFormOverlayEdit {
+  max-height: calc(100dvh - 7rem);
+  overflow-y: auto;
+}
+
+.budget-progress-remaining {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
 #date-range-budget {
   background: linear-gradient(135deg, rgba(236, 244, 251, 0.4), #FFFFFF);
   color: #333333;

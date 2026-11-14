@@ -21,6 +21,8 @@ export function initDB() {
       budget: 'budgetId, *categoria, periodo,  usato, destinato, data',
     });
 
+    db.version(2).stores({ progetti: 'projectId, &chiave' });
+
     initCategorie();
   }
   return db;
@@ -59,6 +61,7 @@ export async function trsObject(trs, collectionName){
           dataInserimento: dataIns,
           dataModifica: dataMod,
           data: fomattedISO,
+          projectId: collectionName === "uscite" ? trs.projectId || null : null,
           ricorrenteId: ricorrenteId
         };
 
@@ -75,6 +78,7 @@ export async function saveRicorrenza(trsOb){
       importo: trsOb.importo,
       categoria: trsOb.categoria,
       data: trsOb.data,
+      projectId: trsOb.projectId,
       ricorrenteId: trsOb.ricorrenteId
     };
 
@@ -96,6 +100,7 @@ export async function updateRicorrenza(trsOb){
       importo: trsOb.importo,
       categoria: trsOb.categoria,
       data: trsOb.data,
+      projectId: trsOb.projectId,
       ricorrenteId: trsOb.ricorrenteId
     };
 
@@ -143,8 +148,9 @@ export async function checkRicorrenze(){
                   importoMax: trs.importo,
                   categoria: trs.categoria
                 };
-                const exists = await queryTrns(criteri, false);
-                if(exists.length > 0) continue;
+                const exists = await queryTrns(criteri, trs.importo > 0);
+                if (exists.some(item => item.ricorrenteId === trs.ricorrenteId ||
+                    (!item.ricorrenteId && (item.projectId ?? null) === (trs.projectId ?? null)))) continue;
                 const tableName = trs.importo > 0 ? "entrate" : "uscite";
                 const ricTrs = { ...trs, data: dataObject };
                 const trsOb = await trsObject(ricTrs, tableName);
@@ -169,14 +175,7 @@ export async function checkRicorrenzeBudgetMensile(){
     const dataInizio = formatDateYMD(new Date(year, month, 1));
     const dataFine   = formatDateYMD(new Date(year, month + 1, 0));
 
-    for (const budget of budgets) {
-        const budgetData = await getBudgets(dataInizio, dataFine, budget.categoria, periodo);
-
-        if (budgetData.length > 0) continue;
-
-        budget.budgetId = crypto.randomUUID();
-        createBudget(budget);
-    }
+    await rinnovaBudget(budgets, dataInizio, dataFine, periodo);
 }
 
 
@@ -187,12 +186,19 @@ export async function checkRicorrenzeBudgetAnnuale(){
     const dataInizio = formatDateYMD(new Date(year, 0, 1));
     const dataFine   = formatDateYMD(new Date(year, 11, 31));
 
-    for(const budget of budgets){
-        const budgetData = await getBudgets(dataInizio, dataFine, budget.categoria, periodo);
-        if(budgetData.length > 0) continue;
-        budget.budgetId = crypto.randomUUID();
-        createBudget(budget);
-    }
+    await rinnovaBudget(budgets, dataInizio, dataFine, periodo);
+}
+
+async function rinnovaBudget(budgets, dataInizio, dataFine, periodo) {
+    const oggi = formatDateYMD(new Date());
+    await initDB().transaction("rw", db.budget, db.progetti, async () => {
+        for (const budget of budgets.sort((a, b) => b.data.localeCompare(a.data))) {
+            if (budget.data > oggi) continue;
+            const existing = await getBudgets(dataInizio, dataFine, budget.categoria, periodo);
+            if (existing.some(item => (item.projectId ?? null) === (budget.projectId ?? null))) continue;
+            await createBudget({ ...budget, budgetId: crypto.randomUUID(), data: oggi });
+        }
+    });
 }
 
 function formatDateYMD(date) {
@@ -263,7 +269,7 @@ export async function saveCategoria(categoria, richiesta) {
         richieste: richiesta
          });
     }else{
-        updateRichieste(null, "more", cat);
+        await updateRichieste(null, "more", cat);
     }
 
   } catch (error) {
@@ -344,6 +350,7 @@ export async function queryTrns(criteri = {}, tabActive) {
       const cats = Array.isArray(item.categoria) ? item.categoria : [item.categoria];
       if (!cats.some(c => categorieFiltro.includes(c))) return false;
     }
+    if (criteri.projectId && item.projectId !== criteri.projectId) return false;
     if (criteri.importoMin != null && item.importo < criteri.importoMin) return false;
     if (criteri.importoMax != null && item.importo > criteri.importoMax) return false;
     if (criteri.dataInizio && item.data < criteri.dataInizio) return false;
@@ -551,6 +558,11 @@ async function esportaDatabase() {
             categoria: [],
             descrizione: [],
             valore: [],
+            projectId: [],
+            ricorrenteId: [],
+            progetti: await getProjects(),
+            budget: await db.budget.toArray(),
+            ricorrenze: await db.ricorrenze.toArray(),
             bilancio: 0
         };
 
@@ -561,6 +573,8 @@ async function esportaDatabase() {
             result.dataModifica.push(item.dataModifica);
             result.categoria.push(item.categoria);
             result.descrizione.push(item.descrizione || "");
+            result.projectId.push(item.projectId ?? null);
+            result.ricorrenteId.push(item.ricorrenteId ?? null);
             result.valore.push(item.importo);
             result.bilancio += item.importo;
         });
@@ -572,6 +586,8 @@ async function esportaDatabase() {
             result.dataModifica.push(item.dataModifica);
             result.categoria.push(item.categoria);
             result.descrizione.push(item.descrizione || "");
+            result.projectId.push(item.projectId ?? null);
+            result.ricorrenteId.push(item.ricorrenteId ?? null);
             result.valore.push(item.importo);
             result.bilancio += item.importo;
         });
@@ -618,17 +634,37 @@ async function importaDatabase(file) {
         const result = JSON.parse(fileContent);
         const transazioni = parseDataTabella(result);
 
-        for (const trs of transazioni) {
-            let trsOb;
-            if (trs.importo < 0) {
-                trsOb = await trsObject(trs, "uscite");
-                await saveTrsLocal(trsOb, "uscite");
-            } else if (trs.importo > 0) {
-                trsOb = await trsObject(trs, "entrate");
-                await saveTrsLocal(trsOb, "entrate");
+        await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, async () => {
+            const projectIds = new Map();
+            for (const project of result.progetti ?? []) {
+                const existing = await db.progetti.get(project.projectId);
+                const projectId = existing?.projectId ?? await resolveProject(project.nome, project.projectId);
+                projectIds.set(project.projectId, projectId);
             }
-            await saveCategoria(trsOb.categoria);
-        }
+            for (const budget of result.budget ?? []) {
+                await db.budget.put({ ...budget, projectId: projectIds.get(budget.projectId) ?? budget.projectId });
+                await saveCategoria(budget.categoria, 0);
+            }
+            for (const ricorrenza of result.ricorrenze ?? []) {
+                await db.ricorrenze.put({ ...ricorrenza, projectId: projectIds.get(ricorrenza.projectId) ?? ricorrenza.projectId });
+            }
+            for (const trs of transazioni) {
+                if (!Number(trs.importo)) continue;
+                const table = trs.importo < 0 ? db.uscite : db.entrate;
+                const record = await trsObject({ ...trs, projectId: projectIds.get(trs.projectId) ?? trs.projectId }, table.name);
+                const existing = await table.get({ dataInserimento: record.dataInserimento });
+                if (existing) {
+                    const associations = {};
+                    if (trs.projectId !== undefined) associations.projectId = record.projectId;
+                    if (trs.ricorrenteId !== undefined) associations.ricorrenteId = record.ricorrenteId;
+                    if (Object.keys(associations).length) await table.update(existing.id, associations);
+                } else {
+                    delete record.id;
+                    await table.add(record);
+                    await saveCategoria(record.categoria);
+                }
+            }
+        });
 
         showToast("Importazione completata!", "success");
 
@@ -651,6 +687,8 @@ function parseDataTabella(dataTabella) {
             dataModifica: dataTabella.dataModifica[i],
             categoria: dataTabella.categoria[i],
             descrizione: dataTabella.descrizione[i],
+            projectId: dataTabella.projectId?.[i],
+            ricorrenteId: dataTabella.ricorrenteId?.[i],
             importo: dataTabella.valore[i]
         });
     }
@@ -660,60 +698,32 @@ function parseDataTabella(dataTabella) {
 
 /////////// CRUD BUDGET //////////////////////
 
-/**
- * CREATE - Crea un nuovo budget
- * @param {Object} budgetData - Dati del budget {categoria, descrizione, periodo, destinato}
- * @returns {Object} - {success: boolean, budgetId: string}
- */
-export async function createBudget(budgetData) {
-  try {
-    initDB();
-    const budgetId = budgetData.budgetId;
-    const budgetOb = {
-      budgetId: budgetId,
-      categoria: capitalizeFirstLetter(budgetData.categoria),
-      periodo: budgetData.periodo,
-      data: budgetData.data,
-      usato: budgetData.usato || 0,
-      destinato: budgetData.destinato || 0
-    };
-
-    await db.budget.add(budgetOb);
-
-    return { success: true, budgetId };
-  } catch (error) {
-    console.error('Errore durante la creazione del budget:', error);
-    showErrorToast('Errore durante la creazione del budget', "error");
-    return { success: false, error };
-  }
+export function getProjects() {
+    return initDB().progetti.orderBy('chiave').toArray();
 }
 
-
-/**
- * READ - Legge budget filtrati per categoria
- * @param {string|Array} categoria - Categoria o array di categorie
- * @returns {Array} - Array di budget filtrati
- */
-export async function getBudgetsByCategoria(categoria) {
-  try {
-    initDB();
-
-    if (Array.isArray(categoria)) {
-      return await db.budget
-        .where('categoria')
-        .anyOf(categoria)
-        .toArray();
-    } else {
-      return await db.budget
-        .where('categoria')
-        .equals(capitalizeFirstLetter(categoria))
-        .toArray();
-    }
-  } catch (error) {
-    console.error('Errore durante la lettura dei budget per categoria:', error);
-    return [];
-  }
+async function resolveProject(nome, projectId = crypto.randomUUID()) {
+    nome = nome.trim();
+    const chiave = nome.toLocaleLowerCase("it");
+    const existing = await db.progetti.get({ chiave });
+    if (existing) return existing.projectId;
+    await db.progetti.add({ projectId, nome, chiave });
+    return projectId;
 }
+
+export async function createBudget(budget) {
+    return saveBudget(budget, false);
+}
+
+async function saveBudget({ projectName, ...budget }, edit) {
+    return initDB().transaction("rw", db.budget, db.progetti, async () => {
+        if (projectName) budget.projectId = await resolveProject(projectName);
+        budget.categoria = capitalizeFirstLetter(budget.categoria);
+        budget.usato = 0;
+        await db.budget[edit ? "put" : "add"](budget);
+    });
+}
+
 
 /**
  * READ - Legge budget filtrati per periodo
@@ -733,19 +743,6 @@ export async function getBudgetsByPeriodo(periodo) {
   }
 }
 
-
-export async function getBudgetsByData(startDate, endDate) {
-  try {
-    initDB();
-    return await db.budget
-      .where('data')
-      .between(startDate, endDate, true, true)
-      .toArray();
-  } catch (error) {
-    console.error('Errore durante la lettura dei budget per data:', error);
-    return [];
-  }
-}
 
 export async function getBudgets(startDate, endDate, categoria, periodo) {
     try {
@@ -776,35 +773,9 @@ export async function getBudgets(startDate, endDate, categoria, periodo) {
 
 
 export async function updateBudget(budget) {
-  try {
-    initDB();
-
-    const budgetId = budget.budgetId;
-    if (!budget) {
-      return { success: false, error: 'Budget non trovato' };
-    }
-
-    const data = budget.data;
-    const periodo = budget.periodo;
-    const destinato = budget.destinato;
-    const categoria = budget.categoria;
-
-    const bgt = {
-        budgetId: budgetId,
-        usato: 0,
-        data: data,
-        periodo: periodo,
-        destinato: destinato,
-        categoria: categoria
-    };
-    await db.budget.put(bgt)
-
-    return { success: true };
-  } catch (error) {
-    console.error('Errore durante l\'aggiornamento dell\'importo usato:', error);
-    return { success: false, error };
-  }
+    return saveBudget(budget, true);
 }
+
 
 /**
  * DELETE - Elimina un budget

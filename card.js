@@ -2,7 +2,7 @@ import { updateTrsLocal, saveTrsLocal, saveCategoria, trsObject, saveRicorrenza,
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
-import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget } from './queryDexie.js';
+import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget, getProjects } from './queryDexie.js';
 import { categorieCreateComponent, parseDateRange, convertDDMMYYYYtoDate } from './main.js';
 
 export function creaSpesaComponent(trsn,tabActive) {
@@ -236,22 +236,6 @@ export function categoriaComponent(categoria, richieste) {
 }
 
 
-function periodoBudget(slider, periodo, ric){
-    let pSelected = null;
-    if (slider.checked) {
-        if(isValid(periodo)) pSelected = periodo;
-
-        ric.innerHTML = "";
-        const periodi = ["mensile", 'annuale'];
-        periodi.forEach( p => {
-            const card = budgetRic(p, pSelected);
-            ric.appendChild(card);
-        });
-    }else{
-        ric.innerHTML = "";
-    }
-}
-
 function renderBudgetProgress(budget, cardElement) {
   const perc = budget.destinato > 0
     ? Math.min((budget.usato / budget.destinato) * 100, 100)
@@ -262,7 +246,12 @@ function renderBudgetProgress(budget, cardElement) {
   const label = cardElement.querySelector('.budget-progress-usato');
 
   bar.style.width = `${perc}%`;
-  percLabel.textContent = `${Math.round(budget.destinato)}`;
+  const currency = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+  label.textContent = currency.format(budget.usato);
+  percLabel.textContent = currency.format(budget.destinato);
+  const remaining = budget.destinato - budget.usato;
+  cardElement.querySelector(".budget-progress-remaining").textContent =
+      (remaining < 0 ? "Sforamento: " : "Disponibile: ") + currency.format(Math.abs(remaining));
 
   bar.classList.remove('ok', 'warning','serious-warning', 'danger');
   percLabel.classList.remove('ok', 'warning','serious-warning', 'danger');
@@ -290,20 +279,27 @@ export function compBudget(budget){
            container.innerHTML = `
         <div class="budget-progress-card">
             <div class="budget-progress-header">
-                <span class="budget-progress-label">${budget.categoria}</span>
-                <span class="budget-progress-label">${budget.periodo}</span>
+                <span class="budget-progress-label"></span>
+                <span class="budget-progress-label"></span>
             </div>
             <div class="budget-progress-header">
-                <span class="budget-progress-usato">${budget.usato.toFixed(0)}</span>
-                <span class="budget-progress-perc">${budget.destinato}</span>
+                <span class="budget-progress-usato"></span>
+                <span class="budget-progress-perc"></span>
             </div>
             <div class="budget-progress-bar-track">
                 <div class="budget-progress-bar-fill"></div>
             </div>
+            <div class="budget-progress-remaining"></div>
         </div>
            `;
 
-   renderBudgetProgress(budget, container);
+    const [name, period] = container.querySelectorAll('.budget-progress-label');
+    name.textContent = [budget.categoria, budget.projectName].filter(Boolean).join(" · ");
+    period.textContent = budget.periodo === "personalizzato"
+        ? [budget.dataInizio, budget.dataFine].map(date => date.split("-").reverse().join("/")).join(" – ")
+        : budget.periodo;
+
+    renderBudgetProgress(budget, container);
 
     container.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -314,7 +310,7 @@ export function compBudget(budget){
 
    container.addEventListener("pointerdown", () => {
      pressTimer = setTimeout(() => {
-       overlayBudgetEdit(budget);
+       openBudgetEdit(budget);
      }, 600);
    });
 
@@ -334,161 +330,136 @@ export function compBudget(budget){
     return container;
 }
 
-export async function overlayBudget(){
-    const openBtn = document.getElementById('addBudgetBtn');
-    const overlay = document.getElementById('budgetFormOverlay');
-    const form = document.getElementById('budgetForm');
-    const categoriaInput = document.getElementById('budgetCategoria');
-    const catRow = document.getElementById('categorieCardsBudget');
-    const closeBtn = document.getElementById('closeBudgetFormBtn');
-    const importo = document.getElementById('budgetImporto');
-    const slider = document.getElementById('ricBudget');
-    const ric = document.getElementById('periodo-budget-add');
+const NEW_PROJECT = 'new-project';
 
-    openBtn.addEventListener('click', async (e) => {
-        if (overlay.classList.contains('showOverlay')) {
-            overlay.classList.remove('showOverlay');
-            form.reset();
-        } else {
-             catRow.innerHTML = "";
-             ric.innerHTML = "";
-             overlay.classList.toggle("showOverlay");
-             const categorie = await getCategorie();
-             categorie.forEach(cat => {
-                 const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
-                 catRow.appendChild(card);
-                 data.value = new Date().toISOString().split("T")[0];
-             });
-            slider.addEventListener('click', async (e) =>{
-                periodoBudget(slider, null, ric);
-            });
-         }
-    });
-
-    closeBtn.addEventListener('click',async () =>{
-        overlay.classList.remove('showOverlay');
-        form.reset();
-    });
-
-        categoriaInput.addEventListener("input",async (event) =>{
-          const categorie = await getCategorie(categoriaInput.value);
-          const fragment = document.createDocumentFragment();
-          categorie.forEach((cat, i) => {
-            const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
-            card.classList.add("cardTr");
-            card.style.animationDelay = `${i * 0.1}s`;
-            fragment.appendChild(card);
-          });
-          catRow.replaceChildren(fragment);
-        });
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const r = document.querySelector('.budgetRic.selectedBudget');
-        const periodo = isValid(r) ? (r.innerText) : "";
-        const data = new Date().toISOString().split('T')[0];
-        const budget = {
-            budgetId: crypto.randomUUID(),
-            categoria: categoriaInput.value.trim(),
-            periodo: periodo,
-            destinato: parseFloat(importo.value),
-            data: data
-        };
-
-
-        try {
-            overlay.classList.remove('showOverlay');
-            await createBudget(budget);
-
-            saveCategoria(budget.categoria, 0);
-            criteriBudget();
-            form.reset();
-            showToast("Budget aggiunto con successo", "success");
-        } catch (err) {
-            showErrorToast("Errore durante il salvataggio", "error");
-            console.log("Errore durante il salvataggio", err);
-        }
-    });
+async function populateProjects(select, selected = '', allowCreate = false) {
+    const projects = await getProjects();
+    select.replaceChildren(new Option('Nessun progetto', ''));
+    for (const project of projects) {
+        select.add(new Option(project.nome, project.projectId));
+    }
+    if (allowCreate) select.add(new Option('Crea un progetto…', NEW_PROJECT));
+    select.value = selected || '';
 }
 
-export async function overlayBudgetEdit(budget){
+async function prepareExpenseProject(form, tab, projectId) {
+    const select = form.elements.projectId;
+    select.disabled = tab !== false;
+    select.closest('label').hidden = select.disabled;
+    if (!select.disabled) await populateProjects(select, projectId);
+}
 
-    document.getElementById('budgetCategoriaEdit').value = budget.categoria;
-    document.getElementById('budgetImportoEdit').value = budget.destinato;
-    const periodo = budget.periodo;
-    const flag = isValid(periodo) ? true : false;
-    document.getElementById('ricBudgetEdit').value = flag;
-    document.getElementById('periodo-budget-addEdit');
+function configureBudgetForm(form, overlay, closeBtn, edit) {
+    const fields = form.elements;
+    const categoria = form.querySelector('[id^="budgetCategoria"]');
+    const importo = form.querySelector('.importoBudget');
+    const catRow = form.querySelector('.categorie-cards');
+    const projectNameLabel = form.querySelector('[data-new-project]');
+    const dates = form.querySelector('.budget-dates');
+    let currentBudget;
 
-    const overlay = document.getElementById('budgetFormOverlayEdit');
-    const form = document.getElementById('budgetFormEdit');
-    const categoriaInput = document.getElementById('budgetCategoriaEdit');
-    const catRow = document.getElementById('categorieCardsBudgetEdit');
-    const closeBtn = document.getElementById('closeBudgetFormBtnEdit');
-    const importo = document.getElementById('budgetImportoEdit');
-    const slider = document.getElementById('ricBudgetEdit');
-    const ric = document.getElementById('periodo-budget-addEdit');
-    const budgetId = budget.budgetId
-    if(flag){
-        slider.checked = true;
-        periodoBudget(slider, periodo, ric);
-     }
+    function updateFields() {
+        const newProject = fields.projectId.value === NEW_PROJECT;
+        projectNameLabel.hidden = !newProject;
+        fields.projectName.disabled = !newProject;
+        fields.projectName.required = newProject;
+        const custom = fields.periodo.value === 'personalizzato';
+        dates.hidden = !custom;
+        for (const field of [fields.dataInizio, fields.dataFine]) {
+            field.disabled = !custom;
+            field.required = custom;
+        }
+    }
 
-     catRow.innerHTML = "";
-     const categorie = await getCategorie();
-     categorie.forEach(cat => {
-         const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
-         catRow.appendChild(card);
-         data.value = new Date().toISOString().split("T")[0];
-     });
-     slider.addEventListener('click', async (e) =>{
-        periodoBudget(slider, periodo, ric);
-     });
+    async function showCategories(search) {
+        const categories = await getCategorie(search);
+        catRow.replaceChildren(...categories.map(cat =>
+            catOverlay(cat.categoria, edit ? 'editBudgetSpesa' : 'addBudgetSpesa', null)
+        ));
+    }
 
-    overlay.classList.add('showOverlay');
+    categoria.addEventListener('input', () => showCategories(categoria.value));
+    fields.projectId.addEventListener('change', updateFields);
+    fields.periodo.addEventListener('change', updateFields);
+    closeBtn.addEventListener('click', () => overlay.classList.remove('showOverlay'));
 
-    closeBtn.addEventListener('click',async () =>{
-        overlay.classList.remove('showOverlay');
-        form.reset();
-    });
-
-        categoriaInput.addEventListener("input",async (event) =>{
-          const categorie = await getCategorie(categoriaInput.value);
-          const fragment = document.createDocumentFragment();
-          categorie.forEach((cat, i) => {
-            const card = catOverlay(cat.categoria, "addBudgetSpesa", null);
-            card.classList.add("cardTr");
-            card.style.animationDelay = `${i * 0.1}s`;
-            fragment.appendChild(card);
-          });
-          catRow.replaceChildren(fragment);
-        });
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const r = document.querySelector('.budgetRic.selectedBudget');
-        const periodo = isValid(r) ? (r.innerText) : "";
-        const data = new Date().toISOString().split('T')[0];
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const periodo = fields.periodo.value;
+        const custom = periodo === 'personalizzato';
+        const dataInizio = custom ? fields.dataInizio.value : null;
+        const dataFine = custom ? fields.dataFine.value : null;
+        const newProject = fields.projectId.value === NEW_PROJECT;
+        const projectName = newProject ? fields.projectName.value.trim() : '';
+        if (custom && (!dataInizio || !dataFine || dataInizio > dataFine)) {
+            showErrorToast('Inserisci un intervallo di date valido.');
+            return;
+        }
+        if (newProject && !projectName) {
+            showErrorToast('Inserisci il nome del progetto.');
+            return;
+        }
         const budget = {
-            budgetId: budgetId,
-            categoria: categoriaInput.value.trim(),
-            periodo: periodo,
-            destinato: parseFloat(importo.value),
-            data: data
+            budgetId: currentBudget?.budgetId ?? crypto.randomUUID(),
+            categoria: categoria.value.trim(),
+            destinato: Number(importo.value),
+            periodo,
+            data: currentBudget?.data ?? new Date().toISOString().split('T')[0],
+            dataInizio,
+            dataFine,
+            projectId: newProject ? null : fields.projectId.value || null,
+            projectName
         };
 
-
+        const submit = form.querySelector('[type="submit"]');
+        submit.disabled = true;
         try {
+            await (edit ? updateBudget(budget) : createBudget(budget));
+            await saveCategoria(budget.categoria, 0);
             overlay.classList.remove('showOverlay');
-            await updateBudget(budget);
+            await criteriBudget();
+            showToast(edit ? 'Budget aggiornato' : 'Budget aggiunto', 'success');
+        } catch (error) {
+            showErrorToast('Errore durante il salvataggio del budget');
+            console.error(error);
+        } finally {
+            submit.disabled = false;
+        }
+    });
 
-            saveCategoria(budget.categoria, 0);
-            criteriBudget();
-            form.reset();
-            showToast("Budget aggiunto con successo", "success");
-        } catch (err) {
-            showErrorToast("Errore durante il salvataggio", "error");
-            console.log("Errore durante il salvataggio", err);
+    return async budget => {
+        currentBudget = budget;
+        form.reset();
+        categoria.value = budget?.categoria ?? '';
+        importo.value = budget?.destinato ?? '';
+        fields.periodo.value = budget?.periodo ?? '';
+        fields.dataInizio.value = budget?.dataInizio ?? '';
+        fields.dataFine.value = budget?.dataFine ?? '';
+        await populateProjects(fields.projectId, budget?.projectId, true);
+        updateFields();
+        await showCategories();
+        overlay.classList.add('showOverlay');
+    };
+}
+
+let openBudgetEdit;
+
+export function overlayBudget() {
+    const overlay = document.getElementById('budgetFormOverlay');
+    const openBudget = configureBudgetForm(
+        document.getElementById('budgetForm'), overlay,
+        document.getElementById('closeBudgetFormBtn'), false
+    );
+    openBudgetEdit = configureBudgetForm(
+        document.getElementById('budgetFormEdit'),
+        document.getElementById('budgetFormOverlayEdit'),
+        document.getElementById('closeBudgetFormBtnEdit'), true
+    );
+    document.getElementById('addBudgetBtn').addEventListener('click', () => {
+        if (overlay.classList.contains('showOverlay')) {
+            overlay.classList.remove('showOverlay');
+        } else {
+            openBudget();
         }
     });
 }
@@ -516,6 +487,7 @@ openBtn.addEventListener('click', async (e) => {
         catRow.innerHTML = "";
         ric.innerHTML = "";
         overlay.classList.toggle("showOverlay");
+        await prepareExpenseProject(form, recuperaTab());
         const categorie = await getCategorie();
         categorie.forEach(cat => {
             const card = catOverlay(cat.categoria, "addSpesa", null);
@@ -553,13 +525,14 @@ openBtn.addEventListener('click', async (e) => {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const tab = recuperaTab();
-        const r = document.querySelector('.ric.selectedRic');
+        const r = form.querySelector('.ric.selectedRic');
         ricorrenza = isValid(r) ? (r.innerText) + '%' + crypto.randomUUID()  : null;
         const transazione = {
             categoria: categoriaInput.value.trim(),
             data: data.value,
             importo: parseFloat(importo.value),
             descrizione: descrizione.value,
+            projectId: tab === false ? form.elements.projectId.value : null,
             ricorrenteId: ricorrenza
         };
 
@@ -669,28 +642,6 @@ function cardRic(periodo, selected, comp){
     return container;
 }
 
-function budgetRic(periodo, selected, comp){
-    const container = document.createElement("div");
-    container.classList.add("budgetRic");
-    if(isValid(selected) && selected === periodo) container.classList.add("selectedBudget");
-    container.innerHTML = `
-        <div>
-            <span> ${periodo}</span>
-        </div>
-    `;
-    container.addEventListener("click", () => {
-        const r = document.querySelectorAll('.budgetRic.selectedBudget');
-        if(isValid(r)) {
-            r.forEach(item => {
-                item.classList.remove("selectedBudget");
-            })
-        }
-        container.classList.toggle("selectedBudget");
-    });
-
-    return container;
-}
-
 export function catOverlay(categoria, sezione, selectedCards) {
     const container = document.createElement("div");
     container.classList.add("card");
@@ -721,8 +672,8 @@ export function catOverlay(categoria, sezione, selectedCards) {
             const categoria = document.getElementById('editCategoria');
             container.classList.toggle("selected");
             categoria.value = categoriaElement.innerText;
-      }else if(sezione === "addBudgetSpesa"){
-               const categoria = document.getElementById('budgetCategoria');
+      }else if(sezione === "addBudgetSpesa" || sezione === "editBudgetSpesa"){
+               const categoria = document.getElementById(sezione === "editBudgetSpesa" ? "budgetCategoriaEdit" : "budgetCategoria");
                container.classList.toggle("selected");
                categoria.value = categoriaElement.innerText;
          }
@@ -766,6 +717,8 @@ export async function overlayEdit(spesa) {
     document.getElementById('editData').value = spesa.data;
     document.getElementById('editImporto').value = Math.abs(spesa.importo);
     document.getElementById('editDescrizione').value = spesa.descrizione;
+    const tab = recuperaTab();
+    await prepareExpenseProject(form, tab, spesa.projectId);
     const slider = document.getElementById('ricorrenteUpdate');
     const ric = document.getElementById('ricorrente-card-upd');
     let ricorrenza = spesa.ricorrenteId;
@@ -816,10 +769,10 @@ export async function overlayEdit(spesa) {
     });
     const oldCategoria = categoriaElement.value;
 
-    form.addEventListener('submit', async (e) => {
+    form.onsubmit = async e => {
     e.preventDefault();
     const formCategoria = categoriaElement.value;
-    const r = document.querySelector('.ric.selectedRic');
+    const r = form.querySelector('.ric.selectedRic');
     const pUpdated = isValid(r) ? (r.innerText) : null;
     if(pSaved !== pUpdated) {
         if(isValid(ricorrenza)){
@@ -832,8 +785,6 @@ export async function overlayEdit(spesa) {
     }
     if(oldCategoria !== formCategoria) switchRichieste(oldCategoria, formCategoria);
 
-    const tab = recuperaTab();
-
     const transazione = {
         id: parseInt(document.getElementById('editSpesaId').value),
         categoria: formCategoria,
@@ -842,6 +793,7 @@ export async function overlayEdit(spesa) {
         data: document.getElementById('editData').value,
         importo: parseFloat(document.getElementById('editImporto').value),
         descrizione: document.getElementById('editDescrizione').value,
+        projectId: tab === false ? form.elements.projectId.value : null,
         ricorrenteId: slider.checked ? ricorrenza : null
      };
     try {
@@ -861,5 +813,5 @@ export async function overlayEdit(spesa) {
         showErrorToast("Errore durante la modifica:", "error");
         console.log(err);
     }
-    }, { once: true });
+    };
 }

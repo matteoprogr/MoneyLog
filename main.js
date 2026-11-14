@@ -1,5 +1,5 @@
 import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
-        deleteSpese, checkRicorrenze, getBudgetsByData, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
+        deleteSpese, checkRicorrenze, getProjects, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
         categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
 
@@ -823,59 +823,47 @@ export async function criteriGraph() {
 export async function criteriBudget(){
     const inputRange = document.getElementById("date-range-budget").value.trim();
     const budgetList = document.getElementById("budget-lista");
-    let dataInizio, dataFine;
-    let inizioAnno, fineAnno;
-    if (inputRange.match(/^[a-z]+\s+\d{4}$/i)) {
-        const { startDate, endDate } = getMonthDateRange(inputRange);
-        dataInizio = startDate;
-        dataFine = endDate;
-
-        const { startYear, endYear } = getYearDateRange(inputRange);
-        inizioAnno = startYear;
-        fineAnno = endYear;
+    let start, end;
+    if (/^[a-z]+\s+\d{4}$/i.test(inputRange)) {
+        ({ startDate: start, endDate: end } = getMonthDateRange(inputRange));
     } else {
-        const { dataInizio: ds, dataFine: df } = parseDateRange(inputRange);
-        dataInizio = convertDDMMYYYYtoDate(ds);
-        dataFine = convertDDMMYYYYtoDate(df);
+        const range = parseDateRange(inputRange);
+        start = convertDDMMYYYYtoDate(range.dataInizio);
+        end = convertDDMMYYYYtoDate(range.dataFine);
     }
+    if (!start || !end) return;
 
-    dataInizio = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataInizio));
-    dataFine = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(dataFine));
-    inizioAnno = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(inizioAnno));
-    fineAnno = convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(fineAnno));
+    const isoDate = date => convertDDMMYYYYtoYYYYMMDD(formatDDMMYYYY(date));
+    const first = isoDate(start);
+    const last = isoDate(end);
+    const firstYear = isoDate(new Date(start.getFullYear(), 0, 1));
+    const lastYear = isoDate(new Date(end.getFullYear(), 11, 31));
+    const [budgets, projects] = await Promise.all([getBudgets(), getProjects()]);
+    const projectNames = new Map(projects.map(project => [project.projectId, project.nome]));
+    const visibleBudgets = [];
 
-    const budget = await getBudgets(dataInizio, dataFine, null, "");
-    const budgetMensile = await getBudgets(dataInizio, dataFine, null, "mensile");
-    const budgetAnno = await getBudgets(inizioAnno, fineAnno, null, "annuale");
-//    const allBudgets = [
-//      ...new Map(
-//        [...budget, ...budgetAnno].map(b => [b.budgetId, b])
-//      ).values()
-//    ];
-    const allBudgets = [
-      ...(budget ?? []),
-      ...(budgetMensile ?? []),
-      ...(budgetAnno ?? [])
-    ];
-
-    const uniqueBudgets = Array.from(
-      new Map(allBudgets.map(b => [b.budgetId, b])).values()
-    );
-
-
-    for(const budget of uniqueBudgets){
-        if(budget.periodo === "annuale"){
-            const totUsato = await getUsciteBudget(budget.categoria, inizioAnno, fineAnno);
-            budget.usato = Math.abs(totUsato);
-        }else{
-            const totUsato = await getUsciteBudget(budget.categoria, dataInizio, dataFine);
-            budget.usato = Math.abs(totUsato);
+    for (const budget of budgets) {
+        let dataInizio = first;
+        let dataFine = last;
+        if (budget.periodo === "personalizzato") {
+            if (!budget.dataInizio || !budget.dataFine || budget.dataInizio > last || budget.dataFine < first) continue;
+            ({ dataInizio, dataFine } = budget);
+        } else if (budget.periodo === "annuale") {
+            if (budget.data < firstYear || budget.data > lastYear) continue;
+            const year = budget.data.slice(0, 4);
+            dataInizio = year + "-01-01";
+            dataFine = year + "-12-31";
+        } else if (budget.data < first || budget.data > last) {
+            continue;
         }
+        budget.projectName = projectNames.get(budget.projectId);
+        budget.usato = Math.abs(await getUsciteBudget(budget, dataInizio, dataFine));
+        visibleBudgets.push(budget);
     }
 
     budgetList.innerHTML = "";
-    if(uniqueBudgets.length > 0){
-        uniqueBudgets.forEach( bgt => {
+    if(visibleBudgets.length > 0){
+        visibleBudgets.forEach( bgt => {
             const container = compBudget(bgt)
             budgetList.appendChild(container);
         });
@@ -885,9 +873,10 @@ export async function criteriBudget(){
     }
 }
 
-async function getUsciteBudget(categoria, dataInizio, dataFine){
-    let filtri = {
-            categoria: categoria,
+async function getUsciteBudget(budget, dataInizio, dataFine){
+    const filtri = {
+            categoria: budget.categoria,
+            projectId: budget.projectId,
             dataInizio: dataInizio,
             dataFine: dataFine
         };

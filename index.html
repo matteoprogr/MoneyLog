@@ -347,7 +347,7 @@
         <summary><h3>Gestisci progetti</h3></summary>
         <ul id="project-management-list"></ul>
     </details>
-    <dialog id="project-delete-dialog" aria-labelledby="project-delete-title">
+    <dialog class="settings-confirm" id="project-delete-dialog" aria-labelledby="project-delete-title">
         <h3 id="project-delete-title">Elimina progetto</h3>
         <p id="project-delete-message"></p>
         <p>I movimenti e le loro ricorrenze saranno conservati senza il progetto.
@@ -360,12 +360,12 @@
     </dialog>
 
     <div id="confirmModal" class="modal hidden">
-        <div class="modal-content">
-            <h2>Conferma Eliminazione</h2>
+        <div class="modal-content settings-confirm" role="dialog" aria-modal="true" aria-labelledby="delete-data-title">
+            <h3 id="delete-data-title">Cancella tutti i dati?</h3>
             <p>Sei sicuro di voler eliminare TUTTO il database? Questa operazione non può essere annullata.</p>
             <div class="modal-actions">
-                <button id="confirmYes" class="btn-danger">Elimina</button>
                 <button id="confirmNo" class="btn-secondary">Annulla</button>
+                <button id="confirmYes" class="btn-danger">Elimina</button>
             </div>
         </div>
     </div>

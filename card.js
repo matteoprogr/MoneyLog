@@ -356,6 +356,19 @@ async function prepareExpenseProject(form, tab, projectId) {
     if (!select.disabled) await populateProjects(select, projectId, Boolean(form.elements.projectName));
 }
 
+let budgetPanelRequest = 0;
+
+export function prepareBudgetPanel() {
+    const request = ++budgetPanelRequest;
+    for (const id of ["budgetSearchOverlay", "budgetFormOverlay", "budgetFormOverlayEdit"]) {
+        const panel = document.getElementById(id);
+        panel.classList.remove("showOverlay");
+        panel.inert = true;
+    }
+    document.getElementById("getBudgetBtn").setAttribute("aria-expanded", "false");
+    return () => request === budgetPanelRequest;
+}
+
 function configureBudgetForm(form, overlay, closeBtn, edit) {
     const fields = form.elements;
     const categoria = form.querySelector('[id^="budgetCategoria"]');
@@ -364,6 +377,8 @@ function configureBudgetForm(form, overlay, closeBtn, edit) {
     const projectNameLabel = form.querySelector('[data-new-project]');
     const dates = form.querySelector('.budget-dates');
     let currentBudget;
+    let hasDraft = false;
+    overlay.inert = true;
 
     function updateFields() {
         const newProject = fields.projectId.value === NEW_PROJECT;
@@ -388,7 +403,10 @@ function configureBudgetForm(form, overlay, closeBtn, edit) {
     categoria.addEventListener('input', () => showCategories(categoria.value));
     fields.projectId.addEventListener('change', updateFields);
     fields.periodo.addEventListener('change', updateFields);
-    closeBtn.addEventListener('click', () => overlay.classList.remove('showOverlay'));
+    closeBtn.addEventListener('click', () => {
+        hasDraft = false;
+        prepareBudgetPanel();
+    });
 
     form.addEventListener('submit', async event => {
         event.preventDefault();
@@ -419,11 +437,13 @@ function configureBudgetForm(form, overlay, closeBtn, edit) {
         };
 
         const submit = form.querySelector('[type="submit"]');
+        if (submit.disabled) return;
         submit.disabled = true;
         try {
             await (edit ? updateBudget(budget) : createBudget(budget));
             await saveCategoria(budget.categoria, 0);
-            overlay.classList.remove('showOverlay');
+            hasDraft = false;
+            if (!overlay.inert) prepareBudgetPanel();
             await criteriBudget();
             showToast(edit ? 'Budget aggiornato' : 'Budget aggiunto', 'success');
         } catch (error) {
@@ -435,16 +455,23 @@ function configureBudgetForm(form, overlay, closeBtn, edit) {
     });
 
     return async budget => {
+        const isCurrent = prepareBudgetPanel();
+        const resume = hasDraft && currentBudget?.budgetId === budget?.budgetId;
         currentBudget = budget;
-        form.reset();
-        categoria.value = budget?.categoria ?? '';
-        importo.value = budget?.destinato ?? '';
-        fields.periodo.value = budget?.periodo ?? '';
-        fields.dataInizio.value = budget?.dataInizio ?? '';
-        fields.dataFine.value = budget?.dataFine ?? '';
-        await populateProjects(fields.projectId, budget?.projectId, true);
+        if (!resume) {
+            form.reset();
+            categoria.value = budget?.categoria ?? '';
+            importo.value = budget?.destinato ?? '';
+            fields.periodo.value = budget?.periodo ?? '';
+            fields.dataInizio.value = budget?.dataInizio ?? '';
+            fields.dataFine.value = budget?.dataFine ?? '';
+        }
+        await populateProjects(fields.projectId, resume ? fields.projectId.value : budget?.projectId, true);
         updateFields();
         await showCategories();
+        if (!isCurrent()) return;
+        hasDraft = true;
+        overlay.inert = false;
         overlay.classList.add('showOverlay');
     };
 }
@@ -464,7 +491,7 @@ export function overlayBudget() {
     );
     document.getElementById('addBudgetBtn').addEventListener('click', () => {
         if (overlay.classList.contains('showOverlay')) {
-            overlay.classList.remove('showOverlay');
+            prepareBudgetPanel();
         } else {
             openBudget();
         }

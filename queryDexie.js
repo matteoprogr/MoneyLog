@@ -27,6 +27,7 @@ export function initDB() {
     }));
 
     db.version(4).stores({ coloriCategorie: "categoria, &colore" });
+    db.version(5).upgrade(riequilibraColoriCategorie);
 
     initCategorie();
   }
@@ -229,20 +230,73 @@ async function setDescrizione(descrizione, categoria){
 /////////// SALVATAGGIO CATEGORIE //////////////////////
 
 const CATEGORY_PALETTE = [
-    "#5470c6", "#2b9348", "#d64b4b", "#a35bc4", "#c56a11", "#008e9b",
-    "#c83b83", "#7b6920", "#375394", "#587833", "#9b4f38", "#167ba5"
+    "#2975c6", "#d93d38", "#209452", "#e4b500", "#813cc1", "#00a8ad",
+    "#ea7121", "#c52c82", "#96aa27", "#31528d", "#a14b2d", "#2bbdc7",
+    "#ee6481", "#147d74", "#e8ce56", "#6761d9", "#719f43", "#883e63",
+    "#f29944", "#5287ae", "#c293cf", "#a95446", "#739f95", "#ad8239"
 ];
+
+function coordinateColore(color) {
+    const channels = color.slice(1).match(/../g).map(hex => {
+        const value = parseInt(hex, 16) / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    const [r, g, b] = channels;
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+}
 
 function prossimoColore(used) {
     const available = CATEGORY_PALETTE.find(color => !used.has(color));
     if (available) return available;
-    // Odd step walks distinct RGB values while skipping very dark and very light values.
-    for (let index = 0; index < 0x1000000; index++) {
-        const rgb = (0x8864a1 + index * 0x9e3779) & 0xffffff;
+
+    // Maximize the nearest distance in OKLab across a grid of saturated colors.
+    const assigned = [...used].map(coordinateColore);
+    let best, bestDistance = -1;
+    for (let r = 24; r <= 248; r += 32) {
+        for (let g = 24; g <= 248; g += 32) {
+            for (let b = 24; b <= 248; b += 32) {
+                if (Math.max(r, g, b) - Math.min(r, g, b) < 64) continue;
+                const color = "#" + [r, g, b].map(value => value.toString(16).padStart(2, "0")).join("");
+                if (used.has(color)) continue;
+                const point = coordinateColore(color);
+                let nearest = Infinity;
+                for (const other of assigned) {
+                    const distance = (point[0] - other[0]) ** 2 + (point[1] - other[1]) ** 2 + (point[2] - other[2]) ** 2;
+                    nearest = Math.min(nearest, distance);
+                    if (nearest <= bestDistance) break;
+                }
+                if (nearest > bestDistance) {
+                    best = color;
+                    bestDistance = nearest;
+                }
+            }
+        }
+    }
+    if (best) return best;
+    for (let rgb = 1; rgb < 0xffffff; rgb++) {
         const color = "#" + rgb.toString(16).padStart(6, "0");
-        if (rgb > 0x222222 && rgb < 0xdddddd && !used.has(color)) return color;
+        if (!used.has(color)) return color;
     }
     throw new Error("Colori disponibili esauriti");
+}
+
+async function riequilibraColoriCategorie(transaction) {
+    const table = transaction.table("coloriCategorie");
+    const stored = await table.toCollection().primaryKeys();
+    const categories = await transaction.table("categorie").toCollection().primaryKeys();
+    const used = new Set();
+    const rows = [...new Set([...categories, ...stored])].map(categoria => {
+        const colore = prossimoColore(used);
+        used.add(colore);
+        return { categoria, colore };
+    });
+    await table.clear();
+    await table.bulkAdd(rows);
 }
 
 async function assegnaColoriCategorie(requested) {

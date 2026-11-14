@@ -1,7 +1,7 @@
 import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, deleteCategorie, queryTrns,
         deleteSpese, checkRicorrenze, getCategoryColors, getProjects, getProjectUsage, deleteProject, deleteBudget, checkRicorrenzeBudgetAnnuale, checkRicorrenzeBudgetMensile, getBudgets } from './queryDexie.js';
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
-        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, populateProjects, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
+        categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, populateProjects, prepareBudgetPanel, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
 
 /////////  SERVICE WORKER ////////////////
 if ('serviceWorker' in navigator) {
@@ -868,8 +868,10 @@ function setupBudgetSearch() {
             setOpen(false);
             return;
         }
+        const isCurrent = prepareBudgetPanel();
         await renderCategories();
         await populateProjects(project, project.value, false, "Tutti i progetti");
+        if (!isCurrent()) return;
         setOpen(true);
         await criteriBudget();
     });

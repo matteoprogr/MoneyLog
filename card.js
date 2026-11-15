@@ -140,7 +140,7 @@ export function nessunaCategoriaComponent(tipo) {
              <div>
                 <span class="rowExplain">😢   Nessuna ${tipo} disponibile</span>
                 <span class="rowExplain">🗑️   Elimina ${tipo} selezionata</span>
-                <span class="rowExplain">👆   Tieni premuto per modificare</span>
+                <span class="rowExplain">👆   Clicca sul cerchio colorato della categoria per modificarla.</span>
              </div>
            `;
 

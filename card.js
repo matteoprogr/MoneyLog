@@ -2,7 +2,7 @@ import { updateTrsLocal, aggiungiMovimento, saveCategoria, trsObject, aggiornaMo
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
-import { getCategorie, switchRichieste, replaceCat, createBudget, updateBudget, getProjects, CATEGORY_PALETTE, getCategoryColors, getAutomaticCategoryColor, getMoreCategoryColors, saveCategoryColor } from './queryDexie.js';
+import { getCategorie, switchRichieste, createBudget, updateBudget, getProjects, CATEGORY_PALETTE, getCategoryColors, getAutomaticCategoryColor, getMoreCategoryColors, updateCategory } from './queryDexie.js';
 import { categorieCreateComponent, parseDateRange, convertDDMMYYYYtoDate } from './main.js';
 
 export function creaSpesaComponent(trsn, tabActive, projectName) {
@@ -165,11 +165,14 @@ export function nessunBudgetComponent(tipo) {
 
 let colorDialogRequest = 0;
 
-async function openCategoryColor(categoria) {
-    const request = ++colorDialogRequest;
+async function openCategoryEditor(categoria) {
     const dialog = document.getElementById("category-color-dialog");
+    if (dialog.open) return;
+    const request = ++colorDialogRequest;
     const form = dialog.querySelector("form");
+    const name = document.getElementById("category-edit-name");
     const save = form.querySelector('[value="save"]');
+    const cancel = form.querySelector('[value="cancel"]');
     const automatic = document.getElementById("category-color-auto");
     const more = document.getElementById("category-color-more");
     const status = document.getElementById("category-color-status");
@@ -203,7 +206,8 @@ async function openCategoryColor(categoria) {
             }));
         }
 
-        document.getElementById("category-color-title").textContent = "Colore · " + categoria;
+        name.value = categoria;
+        name.readOnly = categoria === "Altro";
         renderChoices();
         more.disabled = false;
         status.hidden = true;
@@ -229,19 +233,24 @@ async function openCategoryColor(categoria) {
                 showErrorToast(error.message);
             }
         };
+        cancel.onclick = () => dialog.close();
+        dialog.oncancel = event => {
+            if (save.disabled) event.preventDefault();
+        };
         form.onsubmit = async event => {
-            if (event.submitter?.value === "cancel") return;
             event.preventDefault();
             if (save.disabled) return;
             save.disabled = true;
+            cancel.disabled = true;
             try {
-                await saveCategoryColor(categoria, selected);
-                dialog.close();
+                await updateCategory(categoria, name.value, selected);
                 await categorieCreateComponent();
+                dialog.close();
             } catch (error) {
                 showErrorToast(error.message);
             } finally {
                 save.disabled = false;
+                cancel.disabled = false;
             }
         };
         dialog.showModal();
@@ -253,88 +262,28 @@ async function openCategoryColor(categoria) {
 export function categoriaComponent(categoria, richieste, color) {
     const container = document.createElement("div");
     container.classList.add("cat");
-    let pressTimer;
-
-    if(categoria === "Altro"){
-        container.innerHTML = `
-          <div class="cat-header">
-            <span class="cat-name">${categoria}</span>
-            <span class="countTrs">${richieste}</span>
-          </div>
-        `;
-    }else {
-
     container.innerHTML = `
       <div class="cat-header">
-        <span class="cat-name">${categoria}</span>
-        <span class="countTrs">${richieste}</span>
+        <span class="cat-name"></span>
+        <span class="countTrs"></span>
       </div>
     `;
-
-    const span = container.querySelector('.cat-name');
-    container.addEventListener("pointerdown", event => {
-        if (event.target.closest(".category-color-trigger")) return;
-        pressTimer = setTimeout(() => {
-            const input = document.createElement("input");
-            input.type = "text";
-            const oldValue = span.textContent.trim();
-            input.value = oldValue
-            input.maxLength = 25;
-            input.classList.add("cat-input");
-
-            span.replaceWith(input);
-            input.focus();
-
-            const confirm = async () => {
-                const newValue = input.value.trim() || categoria;
-                span.textContent = newValue;
-                try{ input.replaceWith(span); }catch{}
-                if (oldValue !== newValue) {
-                    await replaceCat(oldValue, newValue);
-                }
-                categorieCreateComponent();
-
-            };
-
-            const notConfirm = async () => {
-                span.textContent = oldValue;
-                try{ input.replaceWith(span); }catch{}
-            };
-
-            input.addEventListener("blur", notConfirm, { once: true });
-            input.addEventListener("keydown", (ev) => {
-                if (ev.key === "Enter") {
-                    confirm();
-                }
-            });
-        }, 600);
-    });
-
-    container.addEventListener("pointerup", () => {
-        clearTimeout(pressTimer);
-    });
-
-    container.addEventListener("pointerleave", () => {
-        clearTimeout(pressTimer);
-    });
-
-    container.addEventListener("pointercancel", () => {
-        clearTimeout(pressTimer);
-    });
-
-    container.addEventListener("click", () => {
-        container.classList.toggle("selected");
-    });
-}
+    container.querySelector(".cat-name").textContent = categoria;
+    container.querySelector(".countTrs").textContent = richieste;
+    if (categoria !== "Altro") {
+        container.addEventListener("click", () => {
+            container.classList.toggle("selected");
+        });
+    }
 
     const swatch = document.createElement("button");
     swatch.type = "button";
     swatch.className = "category-color-trigger";
     swatch.style.backgroundColor = color;
-    swatch.setAttribute("aria-label", "Cambia colore di " + categoria);
+    swatch.setAttribute("aria-label", categoria === "Altro" ? "Cambia colore di Altro" : "Modifica nome e colore di " + categoria);
     swatch.addEventListener("click", event => {
         event.stopPropagation();
-        openCategoryColor(categoria);
+        openCategoryEditor(categoria);
     });
     container.querySelector(".cat-header").prepend(swatch);
     return container;

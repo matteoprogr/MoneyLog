@@ -353,16 +353,32 @@ export async function getAutomaticCategoryColor() {
     return prossimoColore(new Set(colors.values()));
 }
 
-export async function saveCategoryColor(categoria, colore) {
+export async function updateCategory(categoria, nome, colore) {
+    const nuovoNome = capitalizeFirstLetter(nome.trim());
+    if (!nuovoNome || nuovoNome.length > 25) throw new Error("Inserisci un nome da 1 a 25 caratteri");
+    if (categoria === "Altro" && nuovoNome !== categoria) throw new Error("La categoria Altro non può essere rinominata");
     if (!/^#[0-9a-f]{6}$/.test(colore) || colore === "#000000" || colore === "#ffffff") {
         throw new Error("Colore non valido");
     }
     const database = initDB();
-    return database.transaction("rw", database.categorie, database.coloriCategorie, async () => {
-        if (!await database.categorie.get(categoria)) throw new Error("Categoria non trovata");
+    const collegate = [database.uscite, database.entrate, database.ricorrenze, database.budget];
+    return database.transaction("rw", [database.categorie, database.coloriCategorie, ...collegate], async () => {
+        const record = await database.categorie.get(categoria);
+        if (!record) throw new Error("Categoria non trovata");
+        if (nuovoNome !== categoria && await database.categorie.get(nuovoNome)) {
+            throw new Error("Esiste già una categoria con questo nome");
+        }
         const owner = await database.coloriCategorie.get({ colore });
         if (owner && owner.categoria !== categoria) throw new Error("Colore già assegnato");
-        await database.coloriCategorie.put({ categoria, colore });
+        if (nuovoNome !== categoria) {
+            await database.categorie.add({ ...record, categoria: nuovoNome });
+            for (const table of collegate) {
+                await table.where("categoria").equals(categoria).modify({ categoria: nuovoNome });
+            }
+            await database.categorie.delete(categoria);
+            await database.coloriCategorie.delete(categoria);
+        }
+        await database.coloriCategorie.put({ categoria: nuovoNome, colore });
     });
 }
 
@@ -573,30 +589,6 @@ export async function switchRichieste(nomeOld, nomeNew){
     await updateRichieste(nomeOld, "less");
     await saveCategoria(nomeNew);
 }
-
-export async function replaceCat(oldCat, newCat) {
-  newCat = capitalizeFirstLetter(newCat);
-  if (oldCat === newCat) return;
-  const oldArr = await getCategorieEsatta(oldCat);
-  if (!oldArr || oldArr.length === 0) return;
-  const record = oldArr[0];
-  if (!await db.categorie.get(newCat)) {
-      await db.categorie.add({ categoria: newCat, richieste: record.richieste ? 1 : 0 });
-  }
-  const newArr = await getCategorieEsatta(newCat);
-  const recordNew = newArr[0];
-  await updateCatInTrns(record, recordNew);
-  await db.transaction("rw", db.categorie, db.coloriCategorie, async () => {
-      const previous = await db.coloriCategorie.get(oldCat);
-      const target = await db.coloriCategorie.get(newCat);
-      if (previous && !target) {
-          await db.coloriCategorie.delete(oldCat);
-          await db.coloriCategorie.add({ categoria: newCat, colore: previous.colore });
-      }
-      await db.categorie.delete(oldCat);
-  });
-}
-
 
 //////////////   UPDATE CATEGORIE IN TRANSAZIONI ////////////////////////
 async function updateCatInTrns(oldCat, newCat){

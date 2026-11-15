@@ -5,6 +5,7 @@
 
 /* ---- Reset e base ----------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
+html { -webkit-tap-highlight-color: transparent; }
 
 body, html {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
@@ -876,6 +877,7 @@ button {
 }
 .category-color-trigger + .cat-name { margin-right: auto; }
 #category-color-dialog::backdrop { background: rgb(23 38 58 / 38%); }
+#category-edit-name { display: block; width: 100%; margin: 0.25rem 0 0.75rem; }
 .category-color-preview { display: flex; align-items: center; gap: 0.55rem; }
 .category-color-preview span { width: 1.2rem; height: 1.2rem; border-radius: 50%; }
 .category-color-palette {

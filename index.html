@@ -386,15 +386,19 @@
         <div id="gestione-categorie"></div>
     </div>
     <dialog class="settings-confirm" id="category-color-dialog" aria-labelledby="category-color-title">
-        <h3 id="category-color-title"></h3>
-        <p class="category-color-preview"><span aria-hidden="true"></span> <output></output></p>
-        <div class="category-color-palette" role="group" aria-label="Colori disponibili"></div>
-        <button type="button" id="category-color-more">Mostra altri colori</button>
-        <p id="category-color-status" role="status" hidden></p>
-        <button type="button" id="category-color-auto">Assegna automaticamente</button>
-        <form class="modal-actions" method="dialog">
-            <button type="submit" value="cancel">Annulla</button>
-            <button type="submit" value="save">Salva</button>
+        <h3 id="category-color-title">Modifica categoria</h3>
+        <form method="dialog">
+            <label for="category-edit-name">Nome della categoria</label>
+            <input type="text" id="category-edit-name" maxlength="25" required>
+            <p class="category-color-preview"><span aria-hidden="true"></span> <output></output></p>
+            <div class="category-color-palette" role="group" aria-label="Colori disponibili"></div>
+            <button type="button" id="category-color-more">Mostra altri colori</button>
+            <p id="category-color-status" role="status" hidden></p>
+            <button type="button" id="category-color-auto">Assegna automaticamente</button>
+            <div class="modal-actions">
+                <button type="button" value="cancel" autofocus>Annulla</button>
+                <button type="submit" value="save">Salva</button>
+            </div>
         </form>
     </dialog>
     <div class="fullscreenBtnContainer">
@@ -421,7 +425,7 @@
             <li><strong>Movimenti:</strong> registra le tue uscite e le tue entrate. Puoi assegnare una categoria, una data, un importo e una descrizione. Puoi anche impostare un movimento come ricorrente e filtrare la lista per periodo, categoria o importo tramite la ricerca.</li>
             <li><strong>Grafici:</strong> visualizza l'andamento delle tue finanze nel tempo. Il grafico a barre mostra l'andamento mensile, mentre i grafici a torta ripartiscono uscite ed entrate per categoria. Naviga tra i periodi con le frecce o seleziona un intervallo personalizzato.</li>
             <li><strong>Budget:</strong> imposta un limite di spesa per categoria. Per seguire un viaggio o un’altra iniziativa, associa lo stesso progetto al budget e alle relative uscite. Un’uscita può contribuire sia al budget generale della categoria sia a quello del progetto, se rientra nel periodo di entrambi. Usa un periodo personalizzato per includere spese sostenute in mesi diversi. La barra di avanzamento cambia colore man mano che ti avvicini al limite.</li>
-            <li><strong>Categorie:</strong> gestisci le categorie usate per classificare i tuoi movimenti. Puoi aggiungerne di nuove, modificare quelle esistenti, eliminarle e cercarle rapidamente.</li>
+            <li><strong>Categorie:</strong> tocca il cerchio colorato accanto a una categoria per modificarne il nome e il colore nella stessa finestra, poi premi Salva. Per la categoria predefinita «Altro» puoi cambiare solo il colore. Puoi anche aggiungere, cercare ed eliminare categorie.</li>
             <li><strong>Impostazioni:</strong> importa o esporta i tuoi dati in formato JSON per tenerli al sicuro. I dati sono salvati su questo dispositivo. Da qui puoi anche cancellarli tutti in modo definitivo.</li>
         </ul>
     </div>

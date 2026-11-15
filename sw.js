@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moneylog-cache-v55';
+const CACHE_NAME = 'moneylog-cache-v60';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
@@ -6,6 +6,8 @@ const APP_SHELL = [
   './main.js',
   './card.js',
   './queryDexie.js',
+  './investmentData.js',
+  './investments.js',
   './favicon.ico',
   './icons/icon-192.png',
   './libs/dexie.mjs',

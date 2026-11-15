@@ -3,6 +3,8 @@ import { saveCategoria, capitalizeFirstLetter, getCategorie, updateRichieste, de
 import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, overlayEdit, overlayRicerca,
         categoriaComponent, nessunaCategoriaComponent, nessunaElementoComponent, overlayAddSpesa, populateProjects, prepareBudgetPanel, compBudget, nessunBudgetComponent, catOverlay } from './card.js';
 
+import { initializeInvestments, renderInvestments } from './investments.js';
+
 /////////  SERVICE WORKER ////////////////
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -77,6 +79,9 @@ document.querySelectorAll('nav a').forEach(link => {
             setDateRange("#date-range-budget");
         }
 
+        if (targetId === 'investimenti') {
+            renderInvestments().catch(error => showErrorToast('Investimenti: ' + error.message));
+        }
         const selectedCards = document.querySelectorAll('.selected');
         selectedCards.forEach(card => {card.classList.remove('selected');});
     });
@@ -86,6 +91,7 @@ document.querySelectorAll('nav a').forEach(link => {
 
 // DOM CONTENT LOADED ///////////////////////////////
 document.addEventListener("DOMContentLoaded", () => {
+    initializeInvestments();
     targetId = "movimenti";
     overlayAddSpesa();
     overlayRicerca();

@@ -33,6 +33,7 @@
         <a href="#" data-target="movimenti">Movimenti</a>
         <a href="#" data-target="grafici">Grafici</a>
         <a href="#" data-target="budget">Budget</a>
+        <a href="#" data-target="investimenti">Investimenti</a>
         <a href="#" data-target="impostazioni">Impostazioni</a>
         <a href="#" data-target="categorie-section">Categorie</a>
         <a href="#" data-target="info">Info</a>
@@ -320,6 +321,99 @@
 
 
 <!-- Pagina Gestisci dati //////////////////////////////////////////////////////////////-->
+<section id="investimenti" class="page-section">
+    <h2>Investimenti</h2>
+    <div class="investment-content">
+        <div class="investment-actions">
+            <button id="investment-add" type="button">Aggiungi investimento</button>
+        </div>
+        <div id="investment-summary" class="chart-summary"></div>
+        <div id="investment-list"></div>
+        <div id="investment-analytics" hidden>
+            <div class="investment-panel">
+                <h3>Andamento delle quotazioni</h3>
+                <div class="investment-fields">
+                    <label>Vista<select id="investment-mode">
+                        <option value="base">Base 100</option>
+                        <option value="price">Valore quota</option>
+                        <option value="percent">Variazione %</option>
+                    </select></label>
+                    <label id="investment-price-unit-label" hidden>Unità<select id="investment-price-unit"></select></label>
+                    <label>Periodo<select id="investment-period">
+                        <option value="0">Tutto lo storico</option>
+                        <option value="30">Ultimi 30 giorni</option>
+                        <option value="90">Ultimi 90 giorni</option>
+                        <option value="365">Ultimo anno</option>
+                    </select></label>
+                </div>
+                <p id="investment-line-empty">Nessuna quotazione nel periodo selezionato.</p>
+                <div id="investment-line" class="investment-chart" aria-label="Grafico delle quotazioni"></div>
+            </div>
+            <div class="investment-panel">
+                <h3>Composizione del portafoglio</h3>
+                <label>Raggruppa per<select id="investment-group">
+                    <option value="position">Strumento</option><option value="type">Tipo di asset</option>
+                </select></label>
+                <p id="investment-pie-note"></p>
+                <div id="investment-pie" class="investment-chart" aria-label="Grafico della composizione"></div>
+                <ul id="investment-pie-legend" class="investment-pie-legend" aria-label="Pesi del portafoglio"></ul>
+            </div>
+            <div class="investment-actions">
+                <button id="investment-export" type="button">Esporta portafoglio CSV</button>
+                <label><input id="investment-weights" type="checkbox"> Solo pesi percentuali</label>
+            </div>
+        </div>
+    </div>
+    <dialog id="investment-editor" class="investment-dialog" aria-labelledby="investment-editor-title">
+        <form id="investment-form">
+            <h3 id="investment-editor-title">Aggiungi investimento</h3>
+            <div class="investment-fields">
+                <label>Nome<input name="name" type="text" required maxlength="120"></label>
+                <label>Tipo<select name="type">
+                    <option>ETF</option><option>Azione</option><option>Obbligazione</option>
+                    <option>Fondo</option><option>Fondo pensione</option><option>Altro</option>
+                </select></label>
+                <label>Unità di quotazione<select name="unit">
+                    <option value="unit">Prezzo o valore quota</option>
+                    <option value="nominal">Percentuale del nominale</option>
+                    <option value="total">Controvalore da rendiconto</option>
+                </select></label>
+                <label id="investment-quantity-label"><span>Quantità o quote</span><input name="quantity" type="number" min="0" step="any" required></label>
+                <label>Valuta<input name="currency" type="text" value="EUR" pattern="[A-Za-z]{3}" required maxlength="3"></label>
+                <label id="investment-rate-label" hidden>Valore in euro per 1 unità di valuta<input name="rate" type="number" min="0" step="any"></label>
+                <label id="investment-cost-label"><span>Prezzo medio di carico (facoltativo)</span><input name="averageCost" type="number" min="0" step="any"></label>
+                <label>Data di inizio investimento (facoltativa)<input name="startDate" type="date"></label>
+                <label id="investment-gain-label">Guadagno o perdita maturati (facoltativo)<input name="reportedGain" type="number" step="any" aria-describedby="investment-gain-hint"><small id="investment-gain-hint"></small></label>
+                <label id="investment-current-label"><span>Ultima quotazione</span><input name="currentValue" type="number" min="0" step="any" aria-describedby="investment-current-hint"><small id="investment-current-hint">Inserisci il valore della prima quotazione.</small></label>
+                <label>Data della quotazione<input name="currentDate" type="date"></label>
+                <label>ISIN (facoltativo)<input name="isin" type="text" maxlength="12" aria-describedby="investment-isin-feedback"><small id="investment-isin-feedback" aria-live="polite"></small></label>
+                <label>URL di consultazione (facoltativo)<input name="url" type="url" placeholder="https://…"></label>
+            </div>
+            <p id="investment-editor-link-row" hidden><a id="investment-editor-link" target="_blank" rel="noopener noreferrer"></a></p>
+            <p id="investment-editor-error" role="status"></p>
+            <div class="investment-actions">
+                <button type="submit">Salva investimento</button>
+                <button id="investment-cancel" type="button">Annulla</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="investment-quote-editor" class="investment-dialog" aria-labelledby="investment-quote-title">
+        <form id="investment-quote-form">
+            <h3 id="investment-quote-title">Registra quotazione</h3>
+            <p id="investment-quote-link-row" hidden><a id="investment-quote-link" target="_blank" rel="noopener noreferrer"></a></p>
+            <div class="investment-fields">
+                <label>Data del dato<input name="date" type="date" required></label>
+                <label id="investment-quote-value"><span>Valore</span><input name="value" type="number" step="any" min="0" required></label>
+            </div>
+            <p id="investment-quote-error" role="status"></p>
+            <div class="investment-actions">
+                <button id="investment-quote-submit" type="submit">Salva quotazione</button>
+                <button id="investment-quote-cancel" type="button">Annulla</button>
+            </div>
+        </form>
+    </dialog>
+</section>
+
 <section id="impostazioni" class="page-section">
     <h2>Impostazioni</h2>
 
@@ -426,6 +520,7 @@
             <li><strong>Grafici:</strong> visualizza l'andamento delle tue finanze nel tempo. Il grafico a barre mostra l'andamento mensile, mentre i grafici a torta ripartiscono uscite ed entrate per categoria. Naviga tra i periodi con le frecce o seleziona un intervallo personalizzato.</li>
             <li><strong>Budget:</strong> imposta un limite di spesa per categoria. Per seguire un viaggio o un’altra iniziativa, associa lo stesso progetto al budget e alle relative uscite. Un’uscita può contribuire sia al budget generale della categoria sia a quello del progetto, se rientra nel periodo di entrambi. Usa un periodo personalizzato per includere spese sostenute in mesi diversi. La barra di avanzamento cambia colore man mano che ti avvicini al limite.</li>
             <li><strong>Categorie:</strong> tocca il cerchio colorato accanto a una categoria per modificarne il nome e il colore nella stessa finestra, poi premi Salva. Per la categoria predefinita «Altro» puoi cambiare solo il colore. Puoi anche aggiungere, cercare ed eliminare categorie.</li>
+            <li><strong>Investimenti:</strong> registra le posizioni, consulta andamento e composizione ed esporta il portafoglio in CSV.</li>
             <li><strong>Impostazioni:</strong> importa o esporta i tuoi dati in formato JSON per tenerli al sicuro. I dati sono salvati su questo dispositivo. Da qui puoi anche cancellarli tutti in modo definitivo.</li>
         </ul>
     </div>

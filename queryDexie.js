@@ -1,6 +1,7 @@
 import Dexie from './libs/dexie.mjs';
 
 import { isValid, showErrorToast, showToast } from './main.js';
+import { investmentUrl, validateInvestmentBackup } from './investmentData.js';
 
 
 let db;
@@ -28,6 +29,25 @@ export function initDB() {
 
     db.version(4).stores({ coloriCategorie: "categoria, &colore" });
     db.version(5).upgrade(riequilibraColoriCategorie);
+    db.version(6).stores({
+        investments: 'id',
+        investmentQuotes: '[investmentId+date], investmentId'
+    });
+    db.version(8).upgrade(transaction => transaction.table('investments').toCollection().modify(position => {
+        position.url = investmentUrl(position);
+        delete position.source;
+        delete position.sourceNeedsReview;
+        delete position.lastCheck;
+        delete position.refreshError;
+    }));
+    db.version(9).upgrade(async transaction => {
+        const positions = transaction.table('investments');
+        const quotes = transaction.table('investmentQuotes');
+        for (const id of await positions.toCollection().primaryKeys()) {
+            const first = await quotes.where('[investmentId+date]').between([id, ''], [id, '\uffff']).first();
+            if (first) await positions.update(id, { initialQuoteDate: first.date });
+        }
+    });
 
     initCategorie();
   }
@@ -684,6 +704,11 @@ async function esportaDatabase() {
             coloriCategorie: await db.coloriCategorie.toArray(),
             budget: await db.budget.toArray(),
             ricorrenze: await db.ricorrenze.toArray(),
+            investments: await db.transaction('r', db.investments, db.investmentQuotes, async () => ({
+                version: 1,
+                positions: await db.investments.toArray(),
+                quotes: await db.investmentQuotes.toArray()
+            })),
             bilancio: 0
         };
 
@@ -754,8 +779,23 @@ async function importaDatabase(file) {
         const fileContent = await file.text();
         const result = JSON.parse(fileContent);
         const transazioni = parseDataTabella(result);
+        const investments = validateInvestmentBackup(result.investments);
 
-        await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, db.coloriCategorie, async () => {
+        await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, db.coloriCategorie,
+          db.investments, db.investmentQuotes, async () => {
+            if (investments) {
+                const protectedDates = new Map();
+                for (const position of investments.positions) {
+                    const existing = await db.investments.get(position.id);
+                    if (existing && (existing.currency !== position.currency || existing.unit !== position.unit)) {
+                        throw new Error('Posizione esistente con valuta o unità diversa');
+                    }
+                    const initialQuoteDate = existing?.initialQuoteDate ?? position.initialQuoteDate;
+                    if (existing?.initialQuoteDate) protectedDates.set(position.id, existing.initialQuoteDate);
+                    await db.investments.put({ ...position, initialQuoteDate, revision: crypto.randomUUID() });
+                }
+                await db.investmentQuotes.bulkPut(investments.quotes.filter(quote => quote.date !== protectedDates.get(quote.investmentId)));
+            }
             await assegnaColoriCategorie(result.coloriCategorie ?? []);
             const projectIds = new Map();
             for (const project of result.progetti ?? []) {

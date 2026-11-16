@@ -586,6 +586,7 @@ openBtn.addEventListener('click', async (e) => {
             catRow.appendChild(card);
         });
         data.value = new Date().toISOString().split("T")[0];
+        overlay.dataset.movement = recuperaTab() ? 'income' : 'expense';
         overlay.classList.add("showOverlay");
     }
     });
@@ -680,6 +681,7 @@ export function recuperaTab(){
 export async function overlayRicerca() {
     const openBtn = document.getElementById('getSpesaBtn');
     const overlay = document.getElementById('overlayRicerca');
+    const periodInput = document.getElementById('date-range');
     const catRow = document.getElementById('categorieCardsEntrata');
     const categoriaInput = document.getElementById('ricerca-categorie-over');
     const progetto = document.getElementById('ricerca-progetto');
@@ -692,6 +694,7 @@ export async function overlayRicerca() {
             selectedCards = catRow.querySelectorAll(".card.selected");
             catRow.innerHTML = "";
             await populateProjects(progetto, progetto.value, false, "Tutti i progetti");
+            overlay.dataset.movement = recuperaTab() ? 'income' : 'expense';
             overlay.classList.add("showOverlay");
             const categorie = await getCategorie();
             categorie.forEach(cat => {
@@ -701,9 +704,11 @@ export async function overlayRicerca() {
         }
     });
     document.addEventListener('click', (event) => {
-            if (!overlay.classList.contains('showOverlay')) return;
-            if (event.target.closest('#overlayRicerca') || event.target.closest('#getSpesaBtn')) return;
-              overlay.classList.remove('showOverlay');
+        if (!overlay.classList.contains('showOverlay')) return;
+        const path = event.composedPath();
+        const calendar = periodInput._flatpickr?.calendarContainer;
+        if (path.includes(overlay) || path.includes(openBtn) || path.includes(calendar)) return;
+        overlay.classList.remove('showOverlay');
     });
      categoriaInput.addEventListener("input",async (event) =>{
           selectedCards = catRow.querySelectorAll(".card.selected");
@@ -845,6 +850,8 @@ export async function overlayEdit(spesa) {
     catRow.appendChild(card);
     });
 
+    overlay.dataset.movement = tab ? 'income' : 'expense';
+    form.querySelector('.transaction-form-title').textContent = tab ? 'Modifica entrata' : 'Modifica uscita';
     overlay.classList.add("showOverlay");
     slider.onchange = () => ricComponent(slider, previousId, ric);
     categoriaElement.oninput = async () => {

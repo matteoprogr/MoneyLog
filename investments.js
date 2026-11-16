@@ -1,6 +1,6 @@
 import { initDB } from './queryDexie.js';
 import { showToast, showErrorToast } from './main.js';
-import { consultationUrl, csvCell, investmentSeries, isinFeedback, localDate, makeQuote, validatePosition, valuation } from './investmentData.js';
+import { consultationUrl, csvCell, investmentSeries, isinFeedback, localDate, makeQuote, quantityHistory, validatePosition, valuation } from './investmentData.js';
 
 const byId = id => document.getElementById('investment-' + id);
 const formatNumber = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 6 });
@@ -60,7 +60,8 @@ export async function renderInvestments() {
         .map(position => {
             const history = (series.get(position.id) ?? []).sort((a, b) => a.date.localeCompare(b.date));
             const latest = history.at(-1);
-            return { position, history, latest, ...valuation(position, latest) };
+            const { quantity, purchases } = quantityHistory(position, history);
+            return { position, history, latest, quantity, purchases, ...valuation({ ...position, quantity }, latest) };
         });
 
     byId('summary').replaceChildren(...[
@@ -78,7 +79,7 @@ export async function renderInvestments() {
 }
 
 function positionCard(row) {
-    const { position, history, latest, value, cost, gain, valueEur } = row;
+    const { position, history, latest, quantity, purchases, value, cost, gain, valueEur } = row;
     const card = element('details', '', 'investment-panel investment-position');
     card.open = expandedPositions.has(position.id);
     card.addEventListener('toggle', () => {
@@ -95,7 +96,7 @@ function positionCard(row) {
     card.append(summary);
     const fields = element('div', '', 'investment-fields investment-metrics');
     if (position.unit !== 'total') {
-        fields.append(metric(position.unit === 'nominal' ? 'Nominale' : 'Quantità', formatNumber.format(position.quantity)));
+        fields.append(metric(position.unit === 'nominal' ? 'Nominale' : 'Quantità', formatNumber.format(quantity)));
     }
     fields.append(
         metric('Ultima quotazione', latest ? quoteText(position, latest.value) : '—'),
@@ -112,7 +113,7 @@ function positionCard(row) {
         const reference = position.gainReference;
         fields.append(metric('Guadagno / perdita dichiarati al ' + reference.date, amount(reference.gain, position.currency)));
         if (reference.value > 0) {
-            fields.append(metric('Incidenza sul valore alla data indicata', percent(reference.gain / reference.value * 100)));
+            fields.append(metric('Guadagno o perdita in % del controvalore al ' + reference.date, percent(reference.gain / reference.value * 100)));
         }
         if (gain !== null && value > 0 && latest.date > reference.date) {
             fields.append(metric('Incidenza sul controvalore attuale', percent(gain / value * 100)));
@@ -132,11 +133,11 @@ function positionCard(row) {
         button('Elimina', () => safely(() => deletePosition(position)))
     );
     card.append(actions);
-    if (history.length) card.append(quoteHistory(position, history));
+    if (history.length) card.append(quoteHistory(position, history, purchases));
     return card;
 }
 
-function quoteHistory(position, history) {
+function quoteHistory(position, history, purchases) {
     const section = element('details', '', 'investment-quote-history');
     section.open = expandedHistories.has(position.id);
     section.addEventListener('toggle', () => {
@@ -151,6 +152,10 @@ function quoteHistory(position, history) {
         const date = element('time', quote.date);
         date.dateTime = quote.date;
         info.append(date, element('strong', quoteText(position, quote.value)));
+        if (quote.totalQuantity !== undefined) {
+            info.append(element('small', formatNumber.format(quote.totalQuantity) + ' quote totali · ' +
+                formatNumber.format(purchases.get(quote.date)) + ' acquistate'));
+        }
         row.append(info);
         if (quote.date === position.initialQuoteDate) {
             row.append(element('small', 'Quotazione iniziale'));
@@ -195,8 +200,9 @@ function updatePositionFields() {
     const total = fields.unit.value === 'total';
     byId('quantity-label').hidden = total;
     fields.quantity.disabled = total;
-    byId('quantity-label').firstElementChild.textContent =
-        fields.unit.value === 'nominal' ? 'Valore nominale detenuto' : 'Quantità o quote';
+    const hasQuantityHistory = portfolio.find(row => row.position.id === editing?.id)?.purchases.size;
+    byId('quantity-label').firstElementChild.textContent = fields.unit.value === 'nominal' ?
+        'Valore nominale detenuto' : hasQuantityHistory ? 'Quantità prima degli acquisti registrati' : 'Quantità o quote';
     byId('cost-label').firstElementChild.textContent = {
         unit: 'Prezzo medio di carico (facoltativo)',
         nominal: 'Prezzo medio di carico (% del nominale, facoltativo)',
@@ -277,8 +283,9 @@ async function savePosition() {
             throw new Error('La posizione è cambiata. Riaprila per aggiornarla.');
         }
         if (manualQuote) await addQuote(db, manualQuote);
-        const latest = await db.investmentQuotes.where('[investmentId+date]')
-            .between([position.id, ''], [position.id, '\uffff']).last();
+        const history = await db.investmentQuotes.where('investmentId').equals(position.id).sortBy('date');
+        const latest = history.at(-1);
+        const { quantity } = quantityHistory(position, history);
         if (!latest && (!existing || reportedGain !== null)) {
             throw new Error('Inserisci il valore della quotazione prima di salvare.');
         }
@@ -288,8 +295,8 @@ async function savePosition() {
             if (previous && previous.gain === reportedGain) {
                 position.gainReference = previous;
             } else {
-                const { value } = valuation(position, latest);
-                position.gainReference = { gain: reportedGain, value, date: latest.date, quantity: position.quantity };
+                const { value } = valuation({ ...position, quantity }, latest);
+                position.gainReference = { gain: reportedGain, value, date: latest.date, quantity };
             }
             validatePosition(position);
         }
@@ -318,6 +325,9 @@ function openQuote(position, original = null) {
     quoteForm.reset();
     quoteForm.elements.date.value = original?.date ?? localDate();
     quoteForm.elements.value.value = original?.value ?? '';
+    byId('quote-quantity').hidden = position.unit !== 'unit';
+    quoteForm.elements.totalQuantity.disabled = position.unit !== 'unit';
+    quoteForm.elements.totalQuantity.value = original?.totalQuantity ?? '';
     quoteForm.elements.date.max = localDate();
     byId('quote-title').textContent = (original ? 'Modifica quotazione' : 'Registra quotazione') + ' · ' + position.name;
     byId('quote-submit').textContent = original ? 'Salva modifica' : 'Salva quotazione';
@@ -339,16 +349,17 @@ async function editableQuoteKey(db, position, original) {
     if (original.date === position.initialQuoteDate) throw new Error('La quotazione iniziale è protetta.');
     const key = [position.id, original.date];
     const current = await db.investmentQuotes.get(key);
-    if (!current || current.value !== original.value) {
+    if (!current || current.value !== original.value || current.totalQuantity !== original.totalQuantity) {
         throw new Error('La quotazione è cambiata. Riapri la scheda e riprova.');
     }
     return key;
 }
 
 async function saveQuote() {
-    const { date, value } = quoteForm.elements;
+    const { date, value, totalQuantity } = quoteForm.elements;
     const { positionId, original } = quoting;
-    const quote = { ...makeQuote(positionId, date.value, value.valueAsNumber), manual: true };
+    const quantity = totalQuantity.disabled || totalQuantity.value === '' ? undefined : totalQuantity.valueAsNumber;
+    const quote = { ...makeQuote(positionId, date.value, value.valueAsNumber, quantity), manual: true };
     const db = initDB();
     await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
         const position = await db.investments.get(positionId);
@@ -362,10 +373,13 @@ async function saveQuote() {
             }
         } else {
             await addQuote(db, quote);
-            if (!position.initialQuoteDate) {
-                await db.investments.update(positionId, { initialQuoteDate: quote.date });
-            }
         }
+        const history = await db.investmentQuotes.where('investmentId').equals(positionId).toArray();
+        quantityHistory(position, history);
+        await db.investments.update(positionId, {
+            initialQuoteDate: position.initialQuoteDate ?? quote.date,
+            revision: crypto.randomUUID()
+        });
     });
     quoteEditor.close();
     await renderInvestments();
@@ -378,6 +392,7 @@ async function deleteQuote(position, quote) {
         const current = await db.investments.get(position.id);
         const key = await editableQuoteKey(db, current, quote);
         await db.investmentQuotes.delete(key);
+        await db.investments.update(position.id, { revision: crypto.randomUUID() });
     });
     await renderInvestments();
 }
@@ -414,9 +429,9 @@ function renderLine() {
     const cutoff = days ? localDate(start) : '';
     const inPeriod = portfolio.map(({ position, history }) => {
         const { points, baseline } = investmentSeries(position, history);
-        return { position, baseline, hasChange: points.length > 1, points: points.filter(point => point.date >= cutoff) };
+        return { position, baseline, points: points.filter(point => point.date >= cutoff) };
     }).filter(row => row.points.length);
-    const eligible = inPeriod.filter(row => mode === 'price' || (row.hasChange && row.baseline > 0));
+    const eligible = inPeriod.filter(row => mode === 'price' || row.baseline > 0);
 
     const unitField = byId('price-unit');
     const previousUnit = unitField.value;
@@ -428,7 +443,7 @@ function renderLine() {
     const empty = byId('line-empty');
     empty.hidden = rows.length > 0;
     empty.textContent = mode !== 'price' && inPeriod.length ?
-        'Servono due valori e una base iniziale positiva. Puoi consultare la vista Valore quota.' :
+        'Serve un valore iniziale positivo. Puoi consultare la vista Valore quota.' :
         'Nessuna quotazione nel periodo selezionato.';
     if (!rows.length) {
         clearChart('line');
@@ -511,6 +526,7 @@ function renderPie() {
     }
     byId('pie').hidden = false;
     const chart = getChart('pie');
+    chart.dispatchAction({ type: 'hideTip' });
     const values = [...groups.values()];
     const colors = chart.getOption()?.color ?? ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
     const slices = values.map((group, index) => ({
@@ -520,6 +536,7 @@ function renderPie() {
         aria: { enabled: true },
         tooltip: {
             trigger: 'item', renderMode: 'richText', confine: true,
+            hideDelay: 0,
             formatter: item => item.name + '\n' + amount(item.value) + ' · ' + percent(item.percent)
         },
         series: [{
@@ -549,11 +566,11 @@ function exportPortfolio() {
     if (!weightsOnly) columns.push('Valuta', 'Unità', 'Quantità o nominale', 'Prezzo medio di carico',
         'Ultima quotazione', 'Data quotazione', 'Controvalore EUR');
     columns.push('Peso %');
-    const rows = portfolio.map(({ position, latest, valueEur }) => {
+    const rows = portfolio.map(({ position, latest, quantity, valueEur }) => {
         const row = [position.type, position.name, position.isin];
         if (!weightsOnly) row.push(position.currency,
             { unit: 'Quota', nominal: '% del nominale', total: 'Rendiconto' }[position.unit],
-            position.unit === 'total' ? null : position.quantity, position.averageCost,
+            position.unit === 'total' ? null : quantity, position.averageCost,
             latest?.value, latest?.date, valueEur);
         row.push(valueEur === null || total <= 0 ? null : Number((valueEur / total * 100).toFixed(6)));
         return row;

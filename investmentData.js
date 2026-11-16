@@ -81,11 +81,29 @@ export function validatePosition(position) {
     };
 }
 
-export function makeQuote(investmentId, date, value) {
+export function makeQuote(investmentId, date, value, totalQuantity) {
     if (typeof date !== 'string' || !validDate(date) || date > localDate() || !nonNegative(value)) {
         throw new Error('La quotazione deve avere un valore valido e una data di oggi o precedente.');
     }
-    return { investmentId, date, value };
+    if (totalQuantity !== undefined && !nonNegative(totalQuantity)) {
+        throw new Error('Inserisci un totale di quote valido.');
+    }
+    return totalQuantity === undefined ? { investmentId, date, value } :
+        { investmentId, date, value, totalQuantity };
+}
+
+export function quantityHistory(position, quotes) {
+    let quantity = position.quantity;
+    const purchases = new Map();
+    for (const quote of [...quotes].sort((a, b) => a.date.localeCompare(b.date))) {
+        if (quote.totalQuantity === undefined) continue;
+        if (position.unit !== 'unit' || quote.totalQuantity < quantity) {
+            throw new Error('Il totale delle quote deve rispettare le quantità registrate prima e dopo questa data.');
+        }
+        purchases.set(quote.date, quote.totalQuantity - quantity);
+        quantity = quote.totalQuantity;
+    }
+    return { quantity, purchases };
 }
 
 export function validateInvestmentBackup(backup) {
@@ -97,9 +115,9 @@ export function validateInvestmentBackup(backup) {
     const ids = new Set(positions.map(position => position.id));
     if (ids.size !== positions.length) throw new Error('Posizioni duplicate nel backup.');
     const datesByPosition = new Map();
-    const quotes = backup.quotes.map(({ investmentId, date, value, manual }) => {
+    const quotes = backup.quotes.map(({ investmentId, date, value, manual, totalQuantity }) => {
         if (!ids.has(investmentId)) throw new Error('Quotazione senza posizione nel backup.');
-        const quote = makeQuote(investmentId, date, value);
+        const quote = makeQuote(investmentId, date, value, totalQuantity);
         if (!datesByPosition.has(investmentId)) datesByPosition.set(investmentId, new Set());
         const dates = datesByPosition.get(investmentId);
         if (dates.has(date)) throw new Error('Più quotazioni per la stessa posizione e data nel backup.');
@@ -107,6 +125,7 @@ export function validateInvestmentBackup(backup) {
         return { ...quote, manual: manual === true };
     });
     for (const position of positions) {
+        quantityHistory(position, quotes.filter(quote => quote.investmentId === position.id));
         const dates = datesByPosition.get(position.id) ?? new Set();
         if (position.initialQuoteDate && !dates.has(position.initialQuoteDate)) {
             throw new Error('Quotazione iniziale mancante nel backup.');
@@ -138,7 +157,7 @@ export function investmentSeries(position, history) {
     const quotes = anchor ? history.filter(quote => quote.date >= anchor.date) : history;
     return {
         points: anchor ? [anchor, ...quotes] : quotes,
-        baseline: (anchor || history.length > 1) ? (anchor ?? history[0])?.value : null
+        baseline: (anchor ?? quotes[0])?.value ?? null
     };
 }
 

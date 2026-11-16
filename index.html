@@ -134,6 +134,7 @@
     <!-- OVERLAY EDIT SPESA -->
     <div id="editSpesaFormOverlay">
         <form id="editForm">
+            <h3 class="transaction-form-title"></h3>
             <input type="hidden" id="editSpesaId">
 
             <div class="input-group">
@@ -324,9 +325,6 @@
 <section id="investimenti" class="page-section">
     <h2>Investimenti</h2>
     <div class="investment-content">
-        <div class="investment-actions">
-            <button id="investment-add" type="button">Aggiungi investimento</button>
-        </div>
         <div id="investment-summary" class="chart-summary"></div>
         <div id="investment-list"></div>
         <div id="investment-analytics" hidden>
@@ -363,6 +361,9 @@
                 <label><input id="investment-weights" type="checkbox"> Solo pesi percentuali</label>
             </div>
         </div>
+    </div>
+    <div class="fullscreenBtnContainer">
+        <button id="investment-add" class="fullscreenBtn" type="button" aria-label="Aggiungi investimento" title="Aggiungi investimento">➕</button>
     </div>
     <dialog id="investment-editor" class="investment-dialog" aria-labelledby="investment-editor-title">
         <form id="investment-form">
@@ -404,6 +405,10 @@
             <div class="investment-fields">
                 <label>Data del dato<input name="date" type="date" required></label>
                 <label id="investment-quote-value"><span>Valore</span><input name="value" type="number" step="any" min="0" required></label>
+                <label id="investment-quote-quantity" hidden>Totale quote possedute dopo l’acquisto
+                    <input name="totalQuantity" type="number" step="any" min="0" aria-describedby="investment-quote-quantity-hint">
+                    <small id="investment-quote-quantity-hint">Facoltativo. Il prezzo medio di carico si aggiorna dalla scheda della posizione.</small>
+                </label>
             </div>
             <p id="investment-quote-error" role="status"></p>
             <div class="investment-actions">

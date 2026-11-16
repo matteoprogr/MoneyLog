@@ -1,7 +1,7 @@
 import Dexie from './libs/dexie.mjs';
 
 import { isValid, showErrorToast, showToast } from './main.js';
-import { investmentUrl, validateInvestmentBackup } from './investmentData.js';
+import { investmentUrl, quantityHistory, validateInvestmentBackup } from './investmentData.js';
 
 
 let db;
@@ -795,6 +795,10 @@ async function importaDatabase(file) {
                     await db.investments.put({ ...position, initialQuoteDate, revision: crypto.randomUUID() });
                 }
                 await db.investmentQuotes.bulkPut(investments.quotes.filter(quote => quote.date !== protectedDates.get(quote.investmentId)));
+                for (const position of investments.positions) {
+                    const history = await db.investmentQuotes.where('investmentId').equals(position.id).toArray();
+                    quantityHistory(position, history);
+                }
             }
             await assegnaColoriCategorie(result.coloriCategorie ?? []);
             const projectIds = new Map();

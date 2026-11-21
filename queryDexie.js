@@ -705,7 +705,7 @@ async function esportaDatabase() {
             budget: await db.budget.toArray(),
             ricorrenze: await db.ricorrenze.toArray(),
             investments: await db.transaction('r', db.investments, db.investmentQuotes, async () => ({
-                version: 1,
+                version: 2,
                 positions: await db.investments.toArray(),
                 quotes: await db.investmentQuotes.toArray()
             })),
@@ -738,8 +738,12 @@ async function esportaDatabase() {
             result.bilancio += item.importo;
         });
 
-        // Creare un blob e farlo scaricare
-        const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+        const json = JSON.stringify(result, null, 2);
+        if (window.MoneyLogAndroid) {
+            window.MoneyLogAndroid.saveFile("moneyLogExport.json", "application/json", json);
+            return;
+        }
+        const blob = new Blob([json], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -790,8 +794,16 @@ async function importaDatabase(file) {
                     if (existing && (existing.currency !== position.currency || existing.unit !== position.unit)) {
                         throw new Error('Posizione esistente con valuta o unità diversa');
                     }
-                    const initialQuoteDate = existing?.initialQuoteDate ?? position.initialQuoteDate;
-                    if (existing?.initialQuoteDate) protectedDates.set(position.id, existing.initialQuoteDate);
+                    const initialQuoteDate = investments.version === 1 ?
+                        existing?.initialQuoteDate ?? position.initialQuoteDate :
+                        position.initialQuoteDate ?? existing?.initialQuoteDate;
+                    if (investments.version === 1 && existing?.initialQuoteDate) {
+                        protectedDates.set(position.id, existing.initialQuoteDate);
+                    }
+                    if (investments.version === 1 && existing) {
+                        if (!position.sales.length) position.sales = existing.sales ?? [];
+                        position.quoteSource ??= existing.quoteSource ?? null;
+                    }
                     await db.investments.put({ ...position, initialQuoteDate, revision: crypto.randomUUID() });
                 }
                 await db.investmentQuotes.bulkPut(investments.quotes.filter(quote => quote.date !== protectedDates.get(quote.investmentId)));

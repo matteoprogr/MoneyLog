@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application' version '8.7.3'
+}
+
+android {
+    namespace 'it.moneylog.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'it.moneylog.app'
+        minSdk 26
+        targetSdk 35
+        versionCode 12
+        versionName '1.1.10'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/moneylogAssets'))
+    sourceSets.main.res.srcDir(layout.buildDirectory.dir('generated/moneylogResources'))
+}
+
+def syncWebAssets = tasks.register('syncWebAssets', Sync) {
+    from(rootProject.projectDir.parentFile) {
+        include 'index.html', 'css/**', 'icons/**', 'libs/**', 'favicon.ico', 'manifest.json'
+        include 'main.js', 'card.js', 'queryDexie.js', 'investmentData.js', 'investments.js', 'investmentSources.js'
+    }
+    into layout.buildDirectory.dir('generated/moneylogAssets')
+}
+
+def syncLauncherIcon = tasks.register('syncLauncherIcon', Sync) {
+    from(rootProject.projectDir.parentFile.toPath().resolve('icons/icon-192.png').toFile()) {
+        rename { 'ic_launcher.png' }
+        into 'mipmap-xxxhdpi'
+    }
+    into layout.buildDirectory.dir('generated/moneylogResources')
+}
+
+tasks.named('preBuild').configure { dependsOn syncWebAssets, syncLauncherIcon }

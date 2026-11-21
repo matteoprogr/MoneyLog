@@ -327,6 +327,10 @@
     <div class="investment-content">
         <div id="investment-summary" class="chart-summary"></div>
         <div id="investment-list"></div>
+        <details id="investment-closed" class="investment-panel" hidden>
+            <summary>Posizioni chiuse</summary>
+            <div id="investment-closed-list"></div>
+        </details>
         <div id="investment-analytics" hidden>
             <div class="investment-panel">
                 <h3>Andamento delle quotazioni</h3>
@@ -411,9 +415,51 @@
                 </label>
             </div>
             <p id="investment-quote-error" role="status"></p>
+            <p id="investment-quote-cost-preview" role="status"></p>
             <div class="investment-actions">
                 <button id="investment-quote-submit" type="submit">Salva quotazione</button>
                 <button id="investment-quote-cancel" type="button">Annulla</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="investment-sale-editor" class="investment-dialog" aria-labelledby="investment-sale-title">
+        <form id="investment-sale-form">
+            <h3 id="investment-sale-title"></h3>
+            <p id="investment-sale-currency"></p>
+            <div class="investment-fields">
+                <label>Data dell’operazione<input name="date" type="date" required></label>
+                <label id="investment-sale-quantity">Quantità o nominale venduto<input name="quantity" type="number" min="0" step="any"></label>
+                <label id="investment-sale-price">Prezzo di esecuzione<input name="price" type="number" min="0" step="any"></label>
+                <label>Ricavo lordo (in alternativa al prezzo)<input name="gross" type="number" min="0" step="any"></label>
+                <label>Commissioni<input name="fees" type="number" min="0" step="any"></label>
+                <label id="investment-sale-value">Saldo dopo il riscatto (0 per chiudere)<input name="remainingValue" type="number" min="0" step="any"></label>
+                <label>Costo attribuito (facoltativo)<input name="cost" type="number" min="0" step="any"></label>
+                <label id="investment-sale-rate">Euro per unità di valuta<input name="rate" type="number" min="0" step="any"></label>
+            </div>
+            <dl id="investment-sale-preview" class="investment-sale-totals" aria-live="polite"></dl>
+            <p id="investment-sale-preview-error" role="status"></p>
+            <p id="investment-sale-error" role="status"></p>
+            <div class="investment-actions">
+                <button id="investment-sale-submit" type="submit">Salva operazione</button>
+                <button id="investment-sale-cancel" type="button">Annulla</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="investment-source-editor" class="investment-dialog" aria-labelledby="investment-source-title">
+        <form id="investment-source-form">
+            <h3 id="investment-source-title">Configura fonte</h3>
+            <div class="investment-fields">
+                <label>URL della pagina pubblica<input name="url" type="url" required></label>
+                <label>Nome del campo<input name="label" placeholder="Es. Valore quota"></label>
+                <label>Sezione, comparto o mercato<input name="context" placeholder="Es. Crescita"></label>
+            </div>
+            <p id="investment-source-status" role="status"></p>
+            <label id="investment-source-result" hidden>Dato trovato<select name="candidate"></select></label>
+            <div class="investment-actions">
+                <button id="investment-source-read" type="button">Prova lettura</button>
+                <button id="investment-source-use" type="button" disabled>Usa quotazione</button>
+                <button type="submit">Salva fonte</button>
+                <button id="investment-source-cancel" type="button">Chiudi</button>
             </div>
         </form>
     </dialog>
@@ -434,6 +480,11 @@
     <div class="btn">
         <h3>Esporta dati</h3>
         <button id="btnExportJSON">Esporta</button>
+    </div>
+    <div class="btn" id="android-download">
+        <h3>App Android</h3>
+        <p id="android-apk-details">Versione 1.1.10</p>
+        <a id="android-apk-link" href="./downloads/MoneyLog.apk" download="MoneyLog.apk">Scarica APK per Android</a>
     </div>
 
     <div class="btn">
@@ -525,9 +576,30 @@
             <li><strong>Grafici:</strong> visualizza l'andamento delle tue finanze nel tempo. Il grafico a barre mostra l'andamento mensile, mentre i grafici a torta ripartiscono uscite ed entrate per categoria. Naviga tra i periodi con le frecce o seleziona un intervallo personalizzato.</li>
             <li><strong>Budget:</strong> imposta un limite di spesa per categoria. Per seguire un viaggio o un’altra iniziativa, associa lo stesso progetto al budget e alle relative uscite. Un’uscita può contribuire sia al budget generale della categoria sia a quello del progetto, se rientra nel periodo di entrambi. Usa un periodo personalizzato per includere spese sostenute in mesi diversi. La barra di avanzamento cambia colore man mano che ti avvicini al limite.</li>
             <li><strong>Categorie:</strong> tocca il cerchio colorato accanto a una categoria per modificarne il nome e il colore nella stessa finestra, poi premi Salva. Per la categoria predefinita «Altro» puoi cambiare solo il colore. Puoi anche aggiungere, cercare ed eliminare categorie.</li>
-            <li><strong>Investimenti:</strong> registra le posizioni, consulta andamento e composizione ed esporta il portafoglio in CSV.</li>
+            <li><strong>Investimenti:</strong> registra le posizioni, consulta andamento e composizione ed esporta il portafoglio in CSV.
+                <button id="investment-guide-open" type="button">Apri guida investimenti</button>
+            </li>
             <li><strong>Impostazioni:</strong> importa o esporta i tuoi dati in formato JSON per tenerli al sicuro. I dati sono salvati su questo dispositivo. Da qui puoi anche cancellarli tutti in modo definitivo.</li>
         </ul>
+        <dialog id="investment-guide" class="investment-dialog investment-guide" aria-labelledby="investment-guide-title">
+            <div class="investment-guide-heading">
+                <h3 id="investment-guide-title">Guida investimenti</h3>
+                <form method="dialog"><button autofocus>Chiudi</button></form>
+            </div>
+        <p>Apri <strong>Investimenti</strong> e premi il pulsante <strong>+</strong> per aggiungere un titolo. Dai un nome riconoscibile alla posizione, scegli il tipo di strumento e l’unità di quotazione.</p>
+        <ul>
+            <li><strong>Prezzo o valore quota.</strong> Inserisci il numero di quote e il prezzo unitario. Dieci quote acquistate in media a 95 € e quotate a 100 € valgono 1.000 € e mostrano un guadagno maturato di 50 €.</li>
+            <li><strong>Percentuale del nominale.</strong> Inserisci il nominale detenuto e digita la percentuale come numero. Un nominale di 1.000 € quotato al 98% si registra con quotazione 98 e vale 980 €.</li>
+            <li><strong>Controvalore da rendiconto.</strong> Inserisci il saldo totale del rendiconto e, se lo conosci, il capitale investito. Usa questa unità per un fondo pensione quando disponi del saldo ma non del numero di quote.</li>
+            <li><strong>Valuta e cambio.</strong> Indica la valuta della posizione. Per convertire in euro, inserisci quanti euro vale un’unità di valuta estera. Per esempio 0,92 significa che 1 USD vale 0,92 €.</li>
+            <li><strong>Carico e risultato maturato.</strong> Indica il prezzo medio di carico o il capitale investito. Se il dato manca, puoi inserire il guadagno o la perdita dichiarati nella valuta della posizione. Usa il segno meno per una perdita.</li>
+            <li><strong>Date.</strong> La data di inizio è facoltativa. La data della quotazione è quella riportata dalla fonte. Al primo salvataggio serve un valore di quotazione. Se ometti la data del dato, viene usata quella di oggi.</li>
+            <li><strong>ISIN e URL.</strong> Sono facoltativi. L’URL apre la fonte di consultazione. Per un ETF con ISIN valido e URL vuoto, MoneyLog propone un link a justETF.</li>
+        </ul>
+        <p>Per esempio, in un fondo pensione 25,90 € può essere il valore di una quota, mentre 4.977,95 € è il valore dell’intera posizione. Se il guadagno maturato è 276,05 €, il capitale di carico ricavato è 4.701,90 €. Il grafico relativo con data di inizio mostra 100 e 105,87 in Base 100, oppure 0% e +5,87% in Variazione %.</p>
+        <p>Premi i <strong>tre puntini (…)</strong> in alto a destra di una scheda per aprire il suo menu. Da una posizione aperta puoi registrare una quotazione, configurare una fonte per leggere il prezzo da una pagina pubblica, modificare o eliminare la posizione e registrare una vendita o un riscatto.</p>
+        <p>Negli storici, i tre puntini aprono le azioni della singola riga. La <strong>quotazione iniziale</strong> offre solo <strong>Modifica</strong>. Quando esaurisci una posizione, la ritrovi con il suo storico in <strong>Posizioni chiuse</strong>. Il menu della scheda chiusa offre solo <strong>Elimina</strong>, mentre puoi ancora modificare o eliminare una vendita o un riscatto dal relativo storico.</p>
+        </dialog>
     </div>
 </section>
 

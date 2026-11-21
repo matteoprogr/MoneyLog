@@ -6,12 +6,29 @@ import { overlayBudget, creaSpesaComponent, creaComponentTotale, recuperaTab, ov
 import { initializeInvestments, renderInvestments } from './investments.js';
 
 /////////  SERVICE WORKER ////////////////
-if ('serviceWorker' in navigator) {
+if (window.MoneyLogAndroid) {
+  document.getElementById('android-download').hidden = true;
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[target="_blank"]');
+    if (link) link.removeAttribute('target');
+  });
+} else if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then(reg => console.log('Service Worker registered:', reg))
       .catch(err => console.log('Service Worker registration failed:', err));
   });
+}
+
+const apkLink = document.getElementById('android-apk-link');
+if (!window.MoneyLogAndroid) {
+  fetch(apkLink.href, { method: 'HEAD' }).then(response => {
+    const bytes = Number(response.headers.get('Content-Length'));
+    if (response.ok && bytes > 0) {
+      document.getElementById('android-apk-details').append(' · ' +
+        new Intl.NumberFormat('it-IT', { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 0 }).format(bytes / 1000));
+    }
+  }).catch(() => {});
 }
 
 

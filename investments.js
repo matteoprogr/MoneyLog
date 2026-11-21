@@ -1,9 +1,11 @@
 import { initDB } from './queryDexie.js';
 import { showToast, showErrorToast } from './main.js';
-import { consultationUrl, csvCell, investmentSeries, isinFeedback, localDate, makeQuote, quantityHistory, validatePosition, valuation } from './investmentData.js';
+import { consultationUrl, csvCell, formatInvestmentDate, investmentSeries, isinFeedback, localDate, makeQuote, positionPerformance, quantityHistory, validatePosition, valuation } from './investmentData.js';
+import { initializeQuoteSources, openQuoteSource } from './investmentSources.js';
 
 const byId = id => document.getElementById('investment-' + id);
 const formatNumber = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 6 });
+const formatPerformance = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const amount = (value, currency = 'EUR') => value === null ? '—' :
     new Intl.NumberFormat('it-IT', { style: 'currency', currency }).format(value);
 const percent = value => formatNumber.format(value) + '%';
@@ -12,8 +14,10 @@ const quoteText = (position, value) => position.unit === 'nominal' ? percent(val
     formatNumber.format(value) + ' ' + position.currency;
 
 let portfolio = [];
+let closedPositions = [];
 let editing;
 let quoting;
+let selling;
 let renderVersion = 0;
 const expandedPositions = new Set();
 const expandedHistories = new Set();
@@ -23,6 +27,8 @@ const fields = form.elements;
 const quoteForm = byId('quote-form');
 const editor = byId('editor');
 const quoteEditor = byId('quote-editor');
+const saleEditor = byId('sale-editor');
+const saleForm = byId('sale-form');
 
 function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -38,6 +44,42 @@ function button(text, onClick) {
     return node;
 }
 
+let openMenu;
+
+function closeActionMenu(restoreFocus = false) {
+    if (!openMenu) return;
+    const { trigger, panel } = openMenu;
+    openMenu = null;
+    panel.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger.focus();
+}
+
+function actionMenu(label, actions) {
+    const menu = element('div', '', 'investment-action-menu');
+    const panel = element('div', '', 'investment-action-menu-panel');
+    panel.hidden = true;
+    const trigger = button('', () => {
+        const wasOpen = !panel.hidden;
+        closeActionMenu();
+        if (wasOpen) return;
+        panel.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+        openMenu = { menu, panel, trigger };
+    });
+    trigger.className = 'investment-action-menu-trigger';
+    trigger.setAttribute('aria-label', label);
+    trigger.setAttribute('aria-expanded', 'false');
+    for (const [text, action] of actions) {
+        panel.append(button(text, () => {
+            closeActionMenu(true);
+            action();
+        }));
+    }
+    menu.append(trigger, panel);
+    return menu;
+}
+
 function metric(label, value) {
     const node = element('div');
     node.append(element('small', label), element('strong', value));
@@ -50,19 +92,26 @@ export async function renderInvestments() {
     const [positions, quotes] = await db.transaction('r', db.investments, db.investmentQuotes, async () =>
         [await db.investments.toArray(), await db.investmentQuotes.toArray()]);
     if (version !== renderVersion) return;
+    closeActionMenu();
 
     const series = new Map();
     for (const quote of quotes) {
         if (!series.has(quote.investmentId)) series.set(quote.investmentId, []);
         series.get(quote.investmentId).push(quote);
     }
-    portfolio = positions.sort((a, b) => a.type.localeCompare(b.type, 'it') || a.name.localeCompare(b.name, 'it'))
+    const rows = positions.sort((a, b) => a.type.localeCompare(b.type, 'it') || a.name.localeCompare(b.name, 'it'))
         .map(position => {
             const history = (series.get(position.id) ?? []).sort((a, b) => a.date.localeCompare(b.date));
-            const latest = history.at(-1);
-            const { quantity, purchases } = quantityHistory(position, history);
-            return { position, history, latest, quantity, purchases, ...valuation({ ...position, quantity }, latest) };
+            let latest = history.at(-1);
+            const { quantity, purchases, closed } = quantityHistory(position, history);
+            const lastSale = [...(position.sales ?? [])].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+            if (position.unit === 'total' && lastSale && (!latest || lastSale.date >= latest.date)) {
+                latest = { date: lastSale.date, value: lastSale.remainingValue };
+            }
+            return { position, history, latest, quantity, purchases, closed, ...valuation({ ...position, quantity }, latest) };
         });
+    portfolio = rows.filter(row => !row.closed);
+    closedPositions = rows.filter(row => row.closed);
 
     byId('summary').replaceChildren(...[
         ['Controvalore', 'valueEur'], ['Capitale a carico', 'costEur'], ['Guadagno / perdita', 'gainEur']
@@ -73,13 +122,15 @@ export async function renderInvestments() {
         return metric(label + (partial ? ' (parziale)' : ''), amount(total));
     }));
     byId('list').replaceChildren(...(portfolio.length ? portfolio.map(positionCard) :
-        [element('p', 'Aggiungi un investimento per iniziare.')]));
+        [element('p', 'Nessuna posizione aperta.')]));
+    byId('closed').hidden = !closedPositions.length;
+    byId('closed-list').replaceChildren(...closedPositions.map(positionCard));
     byId('analytics').hidden = !portfolio.length;
     if (portfolio.length && document.getElementById('investimenti').classList.contains('active')) renderCharts();
 }
 
 function positionCard(row) {
-    const { position, history, latest, quantity, purchases, value, cost, gain, valueEur } = row;
+    const { position, history, latest, quantity, purchases, value, cost, gain, valueEur, closed } = row;
     const card = element('details', '', 'investment-panel investment-position');
     card.open = expandedPositions.has(position.id);
     card.addEventListener('toggle', () => {
@@ -91,53 +142,56 @@ function positionCard(row) {
     const heading = element('div', '', 'investment-position-heading');
     heading.append(element('strong', position.name),
         element('small', subtitle),
-        element('span', value === null ? 'Quotazione mancante' : amount(value, position.currency)));
+        element('span', closed ? 'Posizione chiusa' : value === null ? 'Quotazione mancante' : amount(value, position.currency)));
     summary.append(heading);
     card.append(summary);
     const fields = element('div', '', 'investment-fields investment-metrics');
     if (position.unit !== 'total') {
         fields.append(metric(position.unit === 'nominal' ? 'Nominale' : 'Quantità', formatNumber.format(quantity)));
     }
-    fields.append(
+    if (!closed) fields.append(
         metric('Ultima quotazione', latest ? quoteText(position, latest.value) : '—'),
-        metric('Data del dato', latest?.date ?? '—'),
+        metric('Data del dato', formatInvestmentDate(latest?.date)),
         metric('Controvalore', amount(value, position.currency)),
         metric(position.gainReference && cost !== null ? 'Capitale iniziale stimato' : 'Costo di carico', amount(cost, position.currency)),
         metric('Guadagno / perdita', amount(gain, position.currency) + (gain !== null && cost > 0 ? ' · ' + percent(gain / cost * 100) : ''))
     );
-    if (position.averageCost !== null && position.unit !== 'total') {
+    if (!closed && position.averageCost !== null && position.unit !== 'total') {
         fields.append(metric('Prezzo medio di carico', quoteText(position, position.averageCost)));
     }
-    if (position.startDate) fields.append(metric('Inizio investimento', position.startDate));
-    if (position.gainReference) {
+    if (position.startDate) fields.append(metric('Inizio investimento', formatInvestmentDate(position.startDate)));
+    if (!closed && position.gainReference) {
         const reference = position.gainReference;
-        fields.append(metric('Guadagno / perdita dichiarati al ' + reference.date, amount(reference.gain, position.currency)));
+        fields.append(metric('Guadagno / perdita dichiarati al ' + formatInvestmentDate(reference.date), amount(reference.gain, position.currency)));
         if (reference.value > 0) {
-            fields.append(metric('Guadagno o perdita in % del controvalore al ' + reference.date, percent(reference.gain / reference.value * 100)));
+            fields.append(metric('Guadagno o perdita in % del controvalore al ' + formatInvestmentDate(reference.date), percent(reference.gain / reference.value * 100)));
         }
         if (gain !== null && value > 0 && latest.date > reference.date) {
             fields.append(metric('Incidenza sul controvalore attuale', percent(gain / value * 100)));
         }
     }
-    if (cost === null && history.length > 1 && history[0].value > 0) {
+    if (!closed && cost === null && history.length > 1 && history[0].value > 0) {
         fields.append(metric('Variazione dalla prima quotazione', percent((latest.value / history[0].value - 1) * 100)));
     }
-    if (position.currency !== 'EUR') {
+    if (!closed && position.currency !== 'EUR') {
         fields.append(metric('Controvalore in euro', valueEur === null ? 'Cambio o quotazione mancante' : amount(valueEur)));
     }
     card.append(fields);
-    const actions = element('div', '', 'investment-actions');
-    actions.append(
-        button('Registra quotazione', () => openQuote(position)),
-        button('Modifica', () => openPosition(position)),
-        button('Elimina', () => safely(() => deletePosition(position)))
-    );
-    card.append(actions);
-    if (history.length) card.append(quoteHistory(position, history, purchases));
-    return card;
+    const actions = closed ? [] : [
+        ['Registra quotazione', () => openQuote(position)],
+        ['Configura fonte', () => openQuoteSource(position)],
+        ['Modifica', () => openPosition(position)],
+        [position.unit === 'total' ? 'Registra riscatto' : 'Registra vendita', () => openSale(row)]
+    ];
+    actions.push(['Elimina', () => safely(() => deletePosition(position))]);
+    if (position.sales?.length) card.append(saleHistory(row));
+    if (history.length) card.append(quoteHistory(position, history, purchases, closed));
+    const wrapper = element('div', '', 'investment-position-wrapper');
+    wrapper.append(actionMenu('Azioni posizione ' + position.name, actions), card);
+    return wrapper;
 }
 
-function quoteHistory(position, history, purchases) {
+function quoteHistory(position, history, purchases, closed) {
     const section = element('details', '', 'investment-quote-history');
     section.open = expandedHistories.has(position.id);
     section.addEventListener('toggle', () => {
@@ -149,29 +203,226 @@ function quoteHistory(position, history, purchases) {
     for (const quote of [...history].reverse()) {
         const row = element('li');
         const info = element('div', '', 'investment-quote-info');
-        const date = element('time', quote.date);
+        const date = element('time', formatInvestmentDate(quote.date));
         date.dateTime = quote.date;
         info.append(date, element('strong', quoteText(position, quote.value)));
-        if (quote.totalQuantity !== undefined) {
-            info.append(element('small', formatNumber.format(quote.totalQuantity) + ' quote totali · ' +
-                formatNumber.format(purchases.get(quote.date)) + ' acquistate'));
-        }
+        if (quote.sourcePeriod) info.append(element('small', 'Periodo della fonte: ' + quote.sourcePeriod));
+        if (quote.totalQuantity !== undefined) info.append(element('small',
+            formatNumber.format(quote.totalQuantity - soldBefore(position, quote.date)) + ' quote totali · ' +
+            formatNumber.format(purchases.get(quote.date)) + ' acquistate'));
         row.append(info);
-        if (quote.date === position.initialQuoteDate) {
-            row.append(element('small', 'Quotazione iniziale'));
-        } else {
-            const actions = element('div', '', 'investment-actions');
-            const edit = button('Modifica', () => openQuote(position, quote));
-            const remove = button('Elimina', () => safely(() => deleteQuote(position, quote)));
-            edit.setAttribute('aria-label', 'Modifica quotazione del ' + quote.date);
-            remove.setAttribute('aria-label', 'Elimina quotazione del ' + quote.date);
-            actions.append(edit, remove);
-            row.append(actions);
+        const initial = quote.date === position.initialQuoteDate;
+        if (initial) info.append(element('small', 'Quotazione iniziale'));
+        if (initial || !closed) {
+            const actions = [['Modifica', () => openQuote(position, quote)]];
+            if (!initial) actions.push(['Elimina', () => safely(() => deleteQuote(position, quote))]);
+            row.classList.add('investment-quote-with-actions');
+            row.prepend(actionMenu('Azioni quotazione del ' + formatInvestmentDate(quote.date), actions));
         }
         list.append(row);
     }
     section.append(list);
     return section;
+}
+
+function saleHistory(row) {
+    const { position, closed } = row;
+    const sales = [...position.sales].sort((a, b) => a.date.localeCompare(b.date));
+    const section = element('details', '', 'investment-quote-history');
+    section.append(element('summary', 'Storico vendite e riscatti (' + sales.length + ')'));
+    const known = sales.filter(sale => sale.cost !== null);
+    const estimated = known.some(sale => sale.estimated);
+    const totals = element('dl', '', 'investment-sale-totals');
+    const result = known.length ? known.reduce((sum, sale) => sum + sale.gross - sale.fees - sale.cost, 0) : null;
+    const resultLabel = 'Risultato realizzato' + (known.length < sales.length ? ' (parziale)' : '') +
+        (estimated ? ' · include stime' : '');
+    totals.append(element('dt', resultLabel), element('dd', amount(result, position.currency)));
+    if (closed) totals.append(element('dt', 'Data di chiusura'),
+        element('dd', formatInvestmentDate(sales.at(-1).date)));
+    section.append(totals);
+    const list = element('ul');
+    for (const sale of sales.reverse()) {
+        const net = sale.gross - sale.fees;
+        const date = element('time', formatInvestmentDate(sale.date));
+        date.dateTime = sale.date;
+        const info = element('dl', '', 'investment-sale-totals');
+        info.append(element('dt', 'Incasso'), element('dd', amount(net, position.currency)));
+        if (sale.quantity !== null) info.append(element('dt', 'Quantità venduta'),
+            element('dd', formatNumber.format(sale.quantity)));
+        else info.append(element('dt', 'Saldo residuo'), element('dd', amount(sale.remainingValue, position.currency)));
+        if (sale.rate !== null) info.append(element('dt', 'Incasso in euro'), element('dd', amount(net * sale.rate)));
+        info.append(element('dt', sale.estimated ? 'Risultato stimato' : 'Risultato'),
+            element('dd', sale.cost === null ? 'Non calcolabile' : amount(net - sale.cost, position.currency)));
+        const item = element('li', '', 'investment-sale-entry');
+        const operation = (position.unit === 'total' ? 'riscatto' : 'vendita') + ' del ' + formatInvestmentDate(sale.date);
+        item.append(actionMenu('Azioni ' + operation, [
+            ['Modifica', () => openSale(row, sale)],
+            ['Elimina', () => safely(() => deleteSale(position, sale))]
+        ]), date, info);
+        list.append(item);
+    }
+    section.append(list);
+    return section;
+}
+
+function openSale(row, original = null) {
+    selling = { ...row, original };
+    saleForm.reset();
+    const { position, quantity } = row;
+    const total = position.unit === 'total';
+    const fields = saleForm.elements;
+    fields.date.value = original?.date ?? localDate();
+    fields.date.max = localDate();
+    fields.date.min = position.startDate ?? '';
+    fields.quantity.value = total ? '' : original?.quantity ?? quantity;
+    fields.gross.value = original?.gross ?? '';
+    fields.fees.value = original?.fees ?? '';
+    fields.remainingValue.value = original?.remainingValue ?? '';
+    fields.cost.value = original?.cost ?? '';
+    fields.quantity.required = !total;
+    fields.remainingValue.required = total;
+    fields.rate.value = (original ? original.rate : position.rate) ?? '';
+    fields.rate.disabled = position.currency === 'EUR';
+    fields.price.disabled = total;
+    byId('sale-quantity').hidden = total;
+    byId('sale-price').hidden = total;
+    byId('sale-value').hidden = !total;
+    byId('sale-rate').hidden = fields.rate.disabled;
+    const action = original ? 'Modifica ' : 'Registra ';
+    byId('sale-title').textContent = action + (total ? 'riscatto' : 'vendita') + ' · ' + position.name;
+    byId('sale-submit').textContent = original ? 'Salva modifica' : 'Salva operazione';
+    byId('sale-currency').textContent = 'Valuta: ' + position.currency +
+        (position.unit === 'nominal' ? ' · Prezzo in percentuale del nominale' : '');
+    byId('sale-error').textContent = '';
+    updateSalePreview();
+    saleEditor.showModal();
+}
+
+function readSaleFields() {
+    return Object.fromEntries([...saleForm.elements].filter(field => field.name && !field.disabled)
+        .map(field => [field.name, field.type === 'number' ?
+            (field.value === '' ? null : field.valueAsNumber) : field.value]));
+}
+
+function saleFromForm(position, history, id, input, original) {
+    const { date, price = null, gross: enteredGross, fees = 0, quantity: enteredQuantity,
+        remainingValue: enteredBalance, rate = null, cost: enteredCost } = input;
+    const total = position.unit === 'total';
+    const quantity = total ? null : enteredQuantity;
+    const multiplier = quantity === null ? 0 : quantity / (position.unit === 'nominal' ? 100 : 1);
+    if (enteredGross !== null && price !== null) {
+        throw new Error('Inserisci il ricavo lordo oppure il prezzo di esecuzione.');
+    }
+    const gross = enteredGross ?? (price === null ? null : price * multiplier);
+    const remainingValue = total ? enteredBalance : null;
+    const sales = position.sales ?? [];
+    const index = original ? sales.findIndex(sale => sale.id === id) : sales.length;
+    if (index < 0) throw new Error('L’operazione non è più presente.');
+    const before = { ...position, sales: sales.filter((sale, offset) => sale.id !== id &&
+        (sale.date < date || (sale.date === date && offset < index))) };
+    const pastQuotes = history.filter(quote => quote.date <= date);
+    const { quantity: available } = quantityHistory(before, pastQuotes);
+    const laterPurchases = history.some(quote => quote.date > date && quote.totalQuantity !== undefined);
+    const basis = valuation({ ...before, quantity: available }, pastQuotes.at(-1)).cost;
+    const sameBasis = !laterPurchases && (!position.gainReference || position.gainReference.date <= date);
+    const calculated = sameBasis ? (total ? remainingValue === 0 ? basis : null :
+        basis === null || !available ? null : basis / available * quantity) : null;
+    const sameCostInputs = original && original.date === date && original.quantity === quantity &&
+        original.remainingValue === remainingValue && original.cost === enteredCost;
+    const explicitCost = original && original.cost === enteredCost && !sameCostInputs && calculated !== null ?
+        null : enteredCost;
+    if (!sameCostInputs && !total && position.averageCost !== null && calculated !== null && explicitCost !== null &&
+        Math.abs(calculated - explicitCost) > 0.005) {
+        throw new Error('Per questa vendita il costo viene calcolato dal prezzo medio di carico.');
+    }
+    const cost = !total && position.averageCost !== null && calculated !== null ? calculated : explicitCost ?? calculated;
+    if (position.startDate && date < position.startDate) throw new Error('La vendita precede l’inizio dell’investimento.');
+    if (total && !original && sales.some(sale => sale.date > date)) throw new Error('Inserisci i riscatti in ordine di data.');
+    if (total && basis !== null && cost !== null && cost - basis > 1e-7) {
+        throw new Error('Il costo attribuito supera il capitale di carico residuo.');
+    }
+    const sale = { id, date, quantity, gross, fees: fees ?? 0, cost: sameCostInputs ? original.cost : cost, remainingValue,
+        rate, estimated: sameCostInputs ? original.estimated : explicitCost === null && calculated !== null && position.averageCost === null };
+    const changedSales = [...sales];
+    changedSales.splice(index, original ? 1 : 0, sale);
+    const updated = validatePosition({ ...position, sales: changedSales });
+    const state = validateSaleHistory(updated, history);
+    return { sales: updated.sales, sale, state };
+}
+
+function validateSaleHistory(position, history) {
+    const state = quantityHistory(position, history);
+    if (position.unit !== 'total') return state;
+    const previous = [];
+    const ordered = [...position.sales].sort((a, b) => a.date.localeCompare(b.date));
+    for (const sale of ordered) {
+        const reference = position.gainReference;
+        const basis = position.averageCost !== null ? position.averageCost :
+            reference && sale.date > reference.date ? reference.value - reference.gain : null;
+        if (basis !== null && sale.cost !== null) {
+            const costs = previous.filter(item => position.averageCost !== null || item.date > reference.date);
+            if (costs.every(item => item.cost !== null) &&
+                costs.reduce((sum, item) => sum + item.cost, sale.cost) - basis > 1e-7) {
+                throw new Error('Il costo attribuito al riscatto del ' + formatInvestmentDate(sale.date) + ' supera il capitale residuo.');
+            }
+        }
+        previous.push(sale);
+    }
+    return state;
+}
+
+function updateSalePreview() {
+    const preview = byId('sale-preview');
+    preview.replaceChildren();
+    const errorOutput = byId('sale-preview-error');
+    errorOutput.textContent = '';
+    if (!saleForm.checkValidity()) return;
+    const { position, history, original } = selling;
+    try {
+        const { sale, state } = saleFromForm(position, history, original?.id ?? 'preview', readSaleFields(), original);
+        const net = sale.gross - sale.fees;
+        const total = position.unit === 'total';
+        for (const [label, value] of [
+            ['Incasso netto', amount(net, position.currency)],
+            ['Costo attribuito', amount(sale.cost, position.currency)],
+            [sale.estimated ? 'Risultato stimato' : 'Risultato realizzato',
+                amount(sale.cost === null ? null : net - sale.cost, position.currency)],
+            [total ? 'Saldo residuo' : 'Quantità residua', total ? amount(sale.remainingValue, position.currency) :
+                formatNumber.format(state.quantity)]
+        ]) preview.append(element('dt', label), element('dd', value));
+    } catch (error) {
+        errorOutput.textContent = error.message;
+    }
+}
+
+async function saveSale() {
+    const { position, original } = selling;
+    const input = readSaleFields();
+    await updateSales(position, (current, history) =>
+        saleFromForm(current, history, original?.id ?? crypto.randomUUID(), input, original).sales);
+    saleEditor.close();
+    await renderInvestments();
+    showToast(original ? 'Operazione aggiornata' : 'Operazione registrata');
+}
+
+async function deleteSale(position, sale) {
+    const operation = position.unit === 'total' ? 'il riscatto' : 'la vendita';
+    if (!window.confirm('Eliminare ' + operation + ' del ' + formatInvestmentDate(sale.date) + '?')) return;
+    await updateSales(position, current => current.sales.filter(item => item.id !== sale.id));
+    await renderInvestments();
+    showToast('Operazione eliminata');
+}
+
+async function updateSales(position, changes) {
+    const db = initDB();
+    await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
+        const current = await db.investments.get(position.id);
+        if (!current || current.revision !== position.revision) throw new Error('La posizione è cambiata. Riapri la scheda.');
+        const history = await db.investmentQuotes.where('investmentId').equals(position.id).sortBy('date');
+        const sales = changes(current, history);
+        validateSaleHistory({ ...current, sales }, history);
+        await db.investments.update(position.id, { sales, revision: crypto.randomUUID() });
+    });
 }
 
 function updateConsultationLink(id, { type, isin, url }) {
@@ -283,6 +534,8 @@ async function savePosition() {
             throw new Error('La posizione è cambiata. Riaprila per aggiornarla.');
         }
         if (manualQuote) await addQuote(db, manualQuote);
+        position.sales = existing?.sales ?? [];
+        position.quoteSource = existing?.quoteSource ?? null;
         const history = await db.investmentQuotes.where('investmentId').equals(position.id).sortBy('date');
         const latest = history.at(-1);
         const { quantity } = quantityHistory(position, history);
@@ -301,6 +554,7 @@ async function savePosition() {
             validatePosition(position);
         }
         position.revision = crypto.randomUUID();
+        validatePosition(position);
         await db.investments.put(position);
     });
     editor.close();
@@ -321,18 +575,21 @@ async function deletePosition(position) {
 }
 
 function openQuote(position, original = null) {
-    quoting = { positionId: position.id, original };
+    quoting = { position, original };
     quoteForm.reset();
     quoteForm.elements.date.value = original?.date ?? localDate();
     quoteForm.elements.value.value = original?.value ?? '';
     byId('quote-quantity').hidden = position.unit !== 'unit';
     quoteForm.elements.totalQuantity.disabled = position.unit !== 'unit';
-    quoteForm.elements.totalQuantity.value = original?.totalQuantity ?? '';
+    const sold = soldBefore(position, original?.date ?? localDate());
+    quoteForm.elements.totalQuantity.value = original?.totalQuantity === undefined ? '' :
+        original.totalQuantity - sold;
     quoteForm.elements.date.max = localDate();
     byId('quote-title').textContent = (original ? 'Modifica quotazione' : 'Registra quotazione') + ' · ' + position.name;
     byId('quote-submit').textContent = original ? 'Salva modifica' : 'Salva quotazione';
     byId('quote-value').firstElementChild.textContent = 'Valore (' + (position.unit === 'nominal' ? '%' : position.currency) + ')';
     byId('quote-error').textContent = '';
+    updateQuoteCostPreview();
     updateConsultationLink('quote', position);
     quoteEditor.showModal();
 }
@@ -346,7 +603,6 @@ async function addQuote(db, quote) {
 
 async function editableQuoteKey(db, position, original) {
     if (!position) throw new Error('Questa posizione è stata eliminata.');
-    if (original.date === position.initialQuoteDate) throw new Error('La quotazione iniziale è protetta.');
     const key = [position.id, original.date];
     const current = await db.investmentQuotes.get(key);
     if (!current || current.value !== original.value || current.totalQuantity !== original.totalQuantity) {
@@ -355,15 +611,59 @@ async function editableQuoteKey(db, position, original) {
     return key;
 }
 
+function correctedGainReference(position, original, quote, quantity) {
+    const reference = position.gainReference;
+    if (!reference || !original || reference.date !== original.date) return reference;
+    return {
+        ...reference,
+        date: quote.date,
+        value: valuation({ ...position, quantity }, quote).value,
+        quantity
+    };
+}
+
+function updateQuoteCostPreview() {
+    const output = byId('quote-cost-preview');
+    output.textContent = '';
+    const { position, original } = quoting;
+    if (!original || position.gainReference?.date !== original.date) return;
+    const { date, value, totalQuantity } = quoteForm.elements;
+    if (!date.validity.valid || !value.validity.valid || !Number.isFinite(value.valueAsNumber)) return;
+    const quantity = !totalQuantity.disabled && totalQuantity.value !== '' ?
+        totalQuantity.valueAsNumber : position.gainReference.quantity;
+    if (!Number.isFinite(quantity)) return;
+    const reference = correctedGainReference(position, original, { date: date.value, value: value.valueAsNumber }, quantity);
+    const cost = reference.value - reference.gain;
+    output.textContent = cost < 0 ? 'Il nuovo controvalore è inferiore al guadagno dichiarato.' :
+        'Capitale di carico stimato dopo la modifica: ' + amount(cost, position.currency) + '.';
+}
+
 async function saveQuote() {
     const { date, value, totalQuantity } = quoteForm.elements;
-    const { positionId, original } = quoting;
+    const { position: opened, original, source } = quoting;
+    const positionId = opened.id;
+    const newDate = date.value;
+    const newValue = value.valueAsNumber;
     const quantity = totalQuantity.disabled || totalQuantity.value === '' ? undefined : totalQuantity.valueAsNumber;
-    const quote = { ...makeQuote(positionId, date.value, value.valueAsNumber, quantity), manual: true };
     const db = initDB();
     await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
         const position = await db.investments.get(positionId);
         if (!position) throw new Error('Questa posizione è stata eliminata.');
+        const previousHistory = await db.investmentQuotes.where('investmentId').equals(positionId).toArray();
+        if (original && position.revision !== opened.revision) throw new Error('La posizione è cambiata. Riapri la scheda.');
+        if (quantityHistory(position, previousHistory).closed &&
+            (!original || original.date !== position.initialQuoteDate)) throw new Error('Questa posizione è chiusa.');
+        const grossQuantity = quantity === undefined ? undefined : quantity + soldBefore(position, newDate);
+        const imported = source && source.value === newValue;
+        const quote = { ...makeQuote(positionId, newDate, newValue, grossQuantity), manual: !imported };
+        if (imported) {
+            quote.sourceUrl = source.url;
+            if (source.period) quote.sourcePeriod = source.period;
+        } else if (original && original.value === quote.value) {
+            quote.manual = original.manual;
+            if (original.sourceUrl) quote.sourceUrl = original.sourceUrl;
+            if (original.sourcePeriod) quote.sourcePeriod = original.sourcePeriod;
+        }
         if (original) {
             const key = await editableQuoteKey(db, position, original);
             if (quote.date === original.date) await db.investmentQuotes.put(quote);
@@ -376,22 +676,34 @@ async function saveQuote() {
         }
         const history = await db.investmentQuotes.where('investmentId').equals(positionId).toArray();
         quantityHistory(position, history);
-        await db.investments.update(positionId, {
-            initialQuoteDate: position.initialQuoteDate ?? quote.date,
+        const initialQuoteDate = original && original.date === position.initialQuoteDate ?
+            quote.date : position.initialQuoteDate ?? quote.date;
+        const gainReference = correctedGainReference(position, original, quote, quantity ?? position.gainReference?.quantity);
+        const changes = {
+            initialQuoteDate, gainReference,
             revision: crypto.randomUUID()
-        });
+        };
+        validatePosition({ ...position, ...changes });
+        await db.investments.update(positionId, changes);
     });
     quoteEditor.close();
     await renderInvestments();
 }
 
+function soldBefore(position, date) {
+    return (position.sales ?? []).reduce((total, sale) => total + (sale.date < date ? sale.quantity ?? 0 : 0), 0);
+}
+
 async function deleteQuote(position, quote) {
-    if (!window.confirm('Eliminare la quotazione del ' + quote.date + ' (' + quoteText(position, quote.value) + ')?')) return;
+    if (!window.confirm('Eliminare la quotazione del ' + formatInvestmentDate(quote.date) + ' (' + quoteText(position, quote.value) + ')?')) return;
     const db = initDB();
     await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
         const current = await db.investments.get(position.id);
         const key = await editableQuoteKey(db, current, quote);
+        if (quote.date === current.initialQuoteDate) throw new Error('La quotazione iniziale è protetta.');
         await db.investmentQuotes.delete(key);
+        const history = await db.investmentQuotes.where('investmentId').equals(position.id).toArray();
+        quantityHistory(current, history);
         await db.investments.update(position.id, { revision: crypto.randomUUID() });
     });
     await renderInvestments();
@@ -427,8 +739,10 @@ function renderLine() {
     const start = new Date();
     start.setDate(start.getDate() - days + 1);
     const cutoff = days ? localDate(start) : '';
-    const inPeriod = portfolio.map(({ position, history }) => {
-        const { points, baseline } = investmentSeries(position, history);
+    const inPeriod = portfolio.map(({ position, history, latest, value, cost }) => {
+        const performance = mode !== 'price' && position.type === 'Fondo pensione' ?
+            positionPerformance(position, latest?.date, value, cost) : null;
+        const { points, baseline } = performance ?? investmentSeries(position, history);
         return { position, baseline, points: points.filter(point => point.date >= cutoff) };
     }).filter(row => row.points.length);
     const eligible = inPeriod.filter(row => mode === 'price' || row.baseline > 0);
@@ -458,17 +772,18 @@ function renderLine() {
         last > points.at(-1).date ? last : points.at(-1).date
     ], ['\uffff', '']);
     const wideRange = Date.parse(bounds[1]) - Date.parse(bounds[0]) > 90 * 86400000;
-    const axisDate = new Intl.DateTimeFormat('it-IT', wideRange ?
-        { month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+    const chartDate = timestamp => formatInvestmentDate(localDate(new Date(timestamp)));
     chart.setOption({
         aria: { enabled: true },
         tooltip: {
             trigger: 'item', renderMode: 'richText', confine: true,
             formatter: item => {
                 const [date, value] = item.value;
-                const formatted = mode === 'percent' ? percent(value) : formatNumber.format(value);
-                return names.get(item.seriesName) + '\n' + localDate(new Date(date)) + ' · ' + formatted +
-                    (item.data.isCost ? '\nPrezzo medio di carico' : '');
+                const formatted = mode === 'price' ? formatNumber.format(value) :
+                    formatPerformance.format(value) + (mode === 'percent' ? '%' : '');
+                return names.get(item.seriesName) + '\n' + chartDate(date) + ' · ' + formatted +
+                    (item.data.estimated ? '\nCapitale di carico ricavato' :
+                        item.data.isCost ? '\nValore di carico' : '');
             }
         },
         legend: { type: 'scroll', formatter: name => names.get(name), selected: { ...legendSelection } },
@@ -476,7 +791,7 @@ function renderLine() {
         xAxis: {
             type: 'time', splitNumber: byId('line').clientWidth < 480 ? 3 : 6,
             minInterval: wideRange ? 28 * 86400000 : 86400000,
-            axisLabel: { formatter: value => axisDate.format(value), hideOverlap: true }
+            axisLabel: { formatter: chartDate, hideOverlap: true }
         },
         yAxis: {
             type: 'value', scale: true, name: mode === 'price' ? unitField.value : mode === 'base' ? 'Base 100' : 'Variazione %',
@@ -484,12 +799,13 @@ function renderLine() {
         },
         series: rows.map(({ position, points, baseline }) => ({
             name: position.id, type: 'line', showSymbol: points.length <= 30 || points.some(point => point.isCost),
-            data: points.map(({ date, value, isCost }) => {
+            data: points.map(({ date, value, isCost, estimated }) => {
                 const relative = mode === 'price' ? null : value / baseline;
                 return {
                     value: [new Date(date + 'T00:00:00').getTime(),
                         mode === 'price' ? value : mode === 'base' ? relative * 100 : (relative - 1) * 100],
                     isCost,
+                    estimated,
                     symbol: isCost ? 'diamond' : points.length > 30 ? 'none' : 'circle',
                     symbolSize: isCost ? 10 : 5
                 };
@@ -576,10 +892,15 @@ function exportPortfolio() {
         return row;
     });
     const csv = [columns, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
+    const name = 'moneylog-portafoglio-' + localDate() + '.csv';
+    if (window.MoneyLogAndroid) {
+        window.MoneyLogAndroid.saveFile(name, 'text/csv', '\uFEFF' + csv);
+        return;
+    }
     const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
     const link = element('a');
     link.href = url;
-    link.download = 'moneylog-portafoglio-' + localDate() + '.csv';
+    link.download = name;
     document.body.append(link);
     link.click();
     link.remove();
@@ -587,6 +908,43 @@ function exportPortfolio() {
 }
 
 export function initializeInvestments() {
+    document.addEventListener('click', event => {
+        if (openMenu && !openMenu.menu.contains(event.target)) closeActionMenu();
+    });
+    document.addEventListener('focusin', event => {
+        if (openMenu && !openMenu.menu.contains(event.target)) closeActionMenu();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && openMenu) {
+            event.preventDefault();
+            closeActionMenu(true);
+        }
+    });
+    const guide = byId('guide');
+    const guideButton = byId('guide-open');
+    guideButton.addEventListener('click', () => {
+        guide.scrollTop = 0;
+        guide.showModal();
+    });
+    guide.addEventListener('close', () => guideButton.focus());
+    initializeQuoteSources({
+        onChange: renderInvestments,
+        onQuote(position, candidate) {
+            openQuote(position);
+            quoting.source = { ...candidate, url: position.quoteSource.url };
+            quoteForm.elements.date.value = candidate.date ?? '';
+            quoteForm.elements.value.value = candidate.value;
+            byId('quote-error').textContent = candidate.date ? '' :
+                (candidate.period ? 'Periodo della fonte: ' + candidate.period + '. ' : '') +
+                'Inserisci la data da usare per la registrazione.';
+        }
+    });
+    byId('sale-cancel').addEventListener('click', () => saleEditor.close());
+    saleForm.addEventListener('input', updateSalePreview);
+    saleForm.addEventListener('submit', event => {
+        event.preventDefault();
+        safely(saveSale, byId('sale-error'));
+    });
     byId('add').addEventListener('click', () => openPosition());
     byId('cancel').addEventListener('click', () => editor.close());
     byId('quote-cancel').addEventListener('click', () => quoteEditor.close());
@@ -609,6 +967,7 @@ export function initializeInvestments() {
         event.preventDefault();
         safely(saveQuote, byId('quote-error'));
     });
+    quoteForm.addEventListener('input', updateQuoteCostPreview);
     window.addEventListener('resize', () => {
         if (!document.getElementById('investimenti').classList.contains('active')) return;
         if (portfolio.length) renderLine();

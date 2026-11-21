@@ -761,9 +761,11 @@ async function esportaDatabase() {
 }
 const fileInput = document.getElementById('fileImport');
 const btnImport = document.getElementById('btnImport');
+const importError = document.getElementById('import-error');
 
 fileInput.addEventListener('change', () => {
   btnImport.disabled = fileInput.files.length === 0;
+  importError.textContent = '';
 });
 
 btnImport.addEventListener('click', () => {
@@ -778,13 +780,19 @@ btnImport.addEventListener('click', () => {
 async function importaDatabase(file) {
     const overlaySpinner = document.getElementById('spinnerOverlay');
     overlaySpinner.style.display = 'flex';
+    importError.textContent = '';
+    let stage = 'Lettura del file';
 
     try {
         const fileContent = await file.text();
+        stage = 'Analisi del JSON';
         const result = JSON.parse(fileContent);
+        stage = 'Controllo dei movimenti';
         const transazioni = parseDataTabella(result);
+        stage = 'Controllo degli investimenti';
         const investments = validateInvestmentBackup(result.investments);
 
+        stage = 'Salvataggio nel database';
         await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, db.coloriCategorie,
           db.investments, db.investmentQuotes, async () => {
             if (investments) {
@@ -848,7 +856,9 @@ async function importaDatabase(file) {
 
     } catch (error) {
         console.error(error);
-        showErrorToast("Errore durante l'importazione", "error");
+        const name = error?.name && error.name !== 'Error' ? error.name + ' · ' : '';
+        const detail = error?.message || String(error);
+        importError.textContent = 'Errore durante l’importazione · ' + stage + '\n' + name + detail;
 
     } finally {
         overlaySpinner.style.display = 'none';

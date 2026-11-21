@@ -126,6 +126,13 @@ button {
 
 .overlayButton { margin-left: 0.1rem; margin-right: 0.1rem; }
 
+#import-error {
+  color: #a12f2f;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#import-error:empty { margin: 0; }
+
 .btn {
   flex: 1 1 0;
   padding: 0.425rem;

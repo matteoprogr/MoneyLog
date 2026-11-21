@@ -768,13 +768,31 @@ fileInput.addEventListener('change', () => {
   importError.textContent = '';
 });
 
-btnImport.addEventListener('click', () => {
+btnImport.addEventListener('click', async () => {
   const file = fileInput.files[0];
-  if (file) {
-    importaDatabase(file);
+  if (!file) return;
+  btnImport.disabled = true;
+  fileInput.disabled = true;
+  try {
+    await importaDatabase(file);
+  } finally {
     fileInput.value = "";
+    fileInput.disabled = false;
   }
 });
+
+function readBackup(file) {
+    const bridge = window.MoneyLogAndroid;
+    if (!bridge?.readBackup) return file.text();
+    return new Promise((resolve, reject) => {
+        window.moneyLogBackupResult = (content, error) => {
+            delete window.moneyLogBackupResult;
+            if (error) reject(new Error(error));
+            else resolve(content);
+        };
+        bridge.readBackup();
+    });
+}
 
 ///////////////////////////  IMPORT  ////////////////////////
 async function importaDatabase(file) {
@@ -784,7 +802,8 @@ async function importaDatabase(file) {
     let stage = 'Lettura del file';
 
     try {
-        const fileContent = await file.text();
+        const fileContent = (await readBackup(file)).replace(/^\uFEFF/, '').trim();
+        if (!fileContent) throw new Error('Il file selezionato è vuoto.');
         stage = 'Analisi del JSON';
         const result = JSON.parse(fileContent);
         stage = 'Controllo dei movimenti';
@@ -857,7 +876,8 @@ async function importaDatabase(file) {
     } catch (error) {
         console.error(error);
         const name = error?.name && error.name !== 'Error' ? error.name + ' · ' : '';
-        const detail = error?.message || String(error);
+        const detail = error instanceof SyntaxError ?
+            error.message + '. Il file potrebbe essere incompleto.' : error?.message || String(error);
         importError.textContent = 'Errore durante l’importazione · ' + stage + '\n' + name + detail;
 
     } finally {

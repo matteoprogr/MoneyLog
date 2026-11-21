@@ -23,6 +23,8 @@ import org.json.JSONObject;
 import org.json.JSONTokener;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -61,6 +63,7 @@ public final class MainActivity extends Activity {
     private AlertDialog reader;
     private QuoteReader quoteReader;
     private ValueCallback<Uri[]> filePicker;
+    private Uri selectedBackup;
     private String exportContent;
 
     @Override
@@ -99,8 +102,11 @@ public final class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (filePicker != null) filePicker.onReceiveValue(null);
                 filePicker = callback;
+                selectedBackup = null;
                 try {
-                    startActivityForResult(params.createIntent(), OPEN_FILE);
+                    Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                            .addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+                    startActivityForResult(picker, OPEN_FILE);
                 } catch (ActivityNotFoundException error) {
                     filePicker = null;
                     callback.onReceiveValue(null);
@@ -156,6 +162,31 @@ public final class MainActivity extends Activity {
 
     private final class MoneyLogBridge {
         @JavascriptInterface
+        public void readBackup() {
+            runOnUiThread(() -> {
+                Uri file = selectedBackup;
+                if (file == null) {
+                    deliverBackup(null, "Seleziona di nuovo il file di backup.");
+                    return;
+                }
+                selectedBackup = null;
+                new Thread(() -> {
+                    try (InputStream stream = getContentResolver().openInputStream(file)) {
+                        if (stream == null) throw new IOException("Il file selezionato non è leggibile.");
+                        InputStreamReader input = new InputStreamReader(stream, StandardCharsets.UTF_8);
+                        StringBuilder text = new StringBuilder();
+                        char[] buffer = new char[8192];
+                        int count;
+                        while ((count = input.read(buffer)) != -1) text.append(buffer, 0, count);
+                        runOnUiThread(() -> deliverBackup(text.toString(), null));
+                    } catch (IOException | SecurityException error) {
+                        runOnUiThread(() -> deliverBackup(null, error.toString()));
+                    }
+                }, "MoneyLog-backup").start();
+            });
+        }
+
+        @JavascriptInterface
         public void readPage(String address) {
             runOnUiThread(() -> showReader(Uri.parse(address)));
         }
@@ -196,6 +227,14 @@ public final class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    private void deliverBackup(String content, String error) {
+        if (app == null) return;
+        String value = content == null ? "null" : JSONObject.quote(content);
+        String failure = error == null ? "null" : JSONObject.quote(error);
+        app.evaluateJavascript("window.moneyLogBackupResult && window.moneyLogBackupResult("
+                + value + "," + failure + ")", null);
     }
 
     private final class QuoteReader {
@@ -381,7 +420,9 @@ public final class MainActivity extends Activity {
         if (request == OPEN_FILE && filePicker != null) {
             ValueCallback<Uri[]> callback = filePicker;
             filePicker = null;
-            callback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data));
+            Uri file = result == RESULT_OK && data != null ? data.getData() : null;
+            selectedBackup = file != null && "content".equals(file.getScheme()) ? file : null;
+            callback.onReceiveValue(selectedBackup == null ? null : new Uri[] { selectedBackup });
         } else if (request == SAVE_FILE) {
             String content = exportContent;
             exportContent = null;

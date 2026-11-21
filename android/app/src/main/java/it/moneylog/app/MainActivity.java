@@ -6,6 +6,8 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -57,6 +59,7 @@ public final class MainActivity extends Activity {
             """, MAX_HTML + 1);
     private WebView app;
     private AlertDialog reader;
+    private QuoteReader quoteReader;
     private ValueCallback<Uri[]> filePicker;
     private String exportContent;
 
@@ -158,6 +161,26 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void readQuotePage(String address, String request) {
+            runOnUiThread(() -> {
+                Uri url = Uri.parse(address);
+                if (!isWebUrl(url) || isLocal(url) || reader != null || quoteReader != null) {
+                    deliverQuotePage(request, null, "Pagina non valida o lettore già in uso.");
+                    return;
+                }
+                quoteReader = new QuoteReader(request);
+                quoteReader.load(url);
+            });
+        }
+
+        @JavascriptInterface
+        public void finishQuotePage(String request) {
+            runOnUiThread(() -> {
+                if (quoteReader != null && quoteReader.request.equals(request)) quoteReader.close();
+            });
+        }
+
+        @JavascriptInterface
         public void saveFile(String name, String type, String content) {
             runOnUiThread(() -> {
                 if (exportContent != null) return;
@@ -173,6 +196,93 @@ public final class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    private final class QuoteReader {
+        private final String request;
+        private final WebView page = new WebView(MainActivity.this);
+        private final Handler timer = new Handler(Looper.getMainLooper());
+        private String lastHtml;
+        private boolean sampling;
+
+        private QuoteReader(String request) {
+            this.request = request;
+        }
+
+        private void load(Uri url) {
+            configureWebView(page);
+            page.getSettings().setDomStorageEnabled(true);
+            page.layout(0, 0, app.getWidth(), app.getHeight());
+            page.setWebViewClient(new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest navigation) {
+                    return !isWebUrl(navigation.getUrl()) || isLocal(navigation.getUrl());
+                }
+
+                @Override
+                public void onPageFinished(WebView view, String address) {
+                    if (quoteReader != QuoteReader.this || sampling || !isWebUrl(Uri.parse(address))) return;
+                    sampling = true;
+                    timer.postDelayed(QuoteReader.this::sample, 1000);
+                }
+
+                @Override
+                public void onReceivedError(WebView view, WebResourceRequest navigation, WebResourceError error) {
+                    if (navigation.isForMainFrame()) fail("Pagina non raggiungibile.");
+                }
+
+                @Override
+                public void onReceivedHttpError(WebView view, WebResourceRequest navigation, WebResourceResponse response) {
+                    if (navigation.isForMainFrame()) fail("La fonte ha risposto con errore HTTP " + response.getStatusCode() + ".");
+                }
+            });
+            timer.postDelayed(() -> fail("Tempo di lettura esaurito."), 15000);
+            page.loadUrl(url.toString());
+        }
+
+        private void sample() {
+            if (quoteReader != this) return;
+            page.evaluateJavascript(SNAPSHOT, result -> {
+                if (quoteReader != this) return;
+                try {
+                    Object snapshot = result == null ? null : new JSONTokener(result).nextValue();
+                    if (snapshot instanceof String html) {
+                        if (html.length() > MAX_HTML) {
+                            fail("La pagina è troppo grande per la lettura.");
+                            return;
+                        }
+                        if (!html.equals(lastHtml)) {
+                            lastHtml = html;
+                            deliverQuotePage(request, html, null);
+                        }
+                    }
+                    timer.postDelayed(this::sample, 1250);
+                } catch (Exception error) {
+                    fail("Impossibile leggere il contenuto della pagina.");
+                }
+            });
+        }
+
+        private void fail(String error) {
+            if (quoteReader != this) return;
+            close();
+            deliverQuotePage(request, null, error);
+        }
+
+        private void close() {
+            quoteReader = null;
+            timer.removeCallbacksAndMessages(null);
+            page.stopLoading();
+            page.destroy();
+        }
+    }
+
+    private void deliverQuotePage(String request, String html, String error) {
+        if (app == null) return;
+        String value = html == null ? "null" : JSONObject.quote(html);
+        String failure = error == null ? "null" : JSONObject.quote(error);
+        app.evaluateJavascript("window.moneyLogQuotePageResult && window.moneyLogQuotePageResult("
+                + JSONObject.quote(request) + "," + value + "," + failure + ")", null);
     }
 
     private void showReader(Uri url) {
@@ -292,6 +402,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (quoteReader != null) quoteReader.close();
         if (reader != null) reader.dismiss();
         if (filePicker != null) filePicker.onReceiveValue(null);
         if (app != null) {

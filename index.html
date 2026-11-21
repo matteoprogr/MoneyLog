@@ -368,7 +368,16 @@
     </div>
     <div class="fullscreenBtnContainer">
         <button id="investment-add" class="fullscreenBtn" type="button" aria-label="Aggiungi investimento" title="Aggiungi investimento">➕</button>
+        <button id="investment-refresh" class="fullscreenBtn" type="button" aria-label="Aggiorna quotazioni" title="Aggiorna quotazioni" disabled>🔄</button>
     </div>
+    <dialog id="investment-refresh-dialog" class="investment-dialog" aria-labelledby="investment-refresh-title">
+        <h3 id="investment-refresh-title">Aggiorna quotazioni</h3>
+        <p id="investment-refresh-status" role="status"></p>
+        <ul id="investment-refresh-results"></ul>
+        <form method="dialog" class="investment-actions">
+            <button id="investment-refresh-close" disabled>Chiudi</button>
+        </form>
+    </dialog>
     <dialog id="investment-editor" class="investment-dialog" aria-labelledby="investment-editor-title">
         <form id="investment-form">
             <h3 id="investment-editor-title">Aggiungi investimento</h3>
@@ -483,7 +492,7 @@
     </div>
     <div class="btn" id="android-download">
         <h3>App Android</h3>
-        <p id="android-apk-details">Versione 1.1.10</p>
+        <p id="android-apk-details">Versione 1.1.11</p>
         <a id="android-apk-link" href="./downloads/MoneyLog.apk" download="MoneyLog.apk">Scarica APK per Android</a>
     </div>
 
@@ -599,6 +608,7 @@
         <p>Per esempio, in un fondo pensione 25,90 € può essere il valore di una quota, mentre 4.977,95 € è il valore dell’intera posizione. Se il guadagno maturato è 276,05 €, il capitale di carico ricavato è 4.701,90 €. Il grafico relativo con data di inizio mostra 100 e 105,87 in Base 100, oppure 0% e +5,87% in Variazione %.</p>
         <p>Premi i <strong>tre puntini (…)</strong> in alto a destra di una scheda per aprire il suo menu. Da una posizione aperta puoi registrare una quotazione, configurare una fonte per leggere il prezzo da una pagina pubblica, modificare o eliminare la posizione e registrare una vendita o un riscatto.</p>
         <p>Negli storici, i tre puntini aprono le azioni della singola riga. La <strong>quotazione iniziale</strong> offre solo <strong>Modifica</strong>. Quando esaurisci una posizione, la ritrovi con il suo storico in <strong>Posizioni chiuse</strong>. Il menu della scheda chiusa offre solo <strong>Elimina</strong>, mentre puoi ancora modificare o eliminare una vendita o un riscatto dal relativo storico.</p>
+        <p>Premi <strong>Aggiorna quotazioni</strong> (🔄) accanto al <strong>+</strong> per leggere le fonti configurate delle posizioni aperte. MoneyLog usa la data pubblicata e aggiunge o aggiorna la quotazione di quel giorno. Per le fonti mensili usa l’ultimo giorno del mese e mostra il periodo originale nello storico. Il riepilogo finale indica quali titoli richiedono una verifica. Usa l’app Android per le fonti che il browser non riesce a leggere.</p>
         </dialog>
     </div>
 </section>

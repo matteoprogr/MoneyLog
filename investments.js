@@ -1,7 +1,7 @@
 import { initDB } from './queryDexie.js';
 import { showToast, showErrorToast } from './main.js';
 import { consultationUrl, csvCell, formatInvestmentDate, investmentSeries, isinFeedback, localDate, makeQuote, positionPerformance, quantityHistory, validatePosition, valuation } from './investmentData.js';
-import { initializeQuoteSources, openQuoteSource } from './investmentSources.js';
+import { initializeQuoteSources, openQuoteSource, readLatestQuote } from './investmentSources.js';
 
 const byId = id => document.getElementById('investment-' + id);
 const formatNumber = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 6 });
@@ -15,6 +15,7 @@ const quoteText = (position, value) => position.unit === 'nominal' ? percent(val
 
 let portfolio = [];
 let closedPositions = [];
+let refreshingQuotes = false;
 let editing;
 let quoting;
 let selling;
@@ -112,6 +113,7 @@ export async function renderInvestments() {
         });
     portfolio = rows.filter(row => !row.closed);
     closedPositions = rows.filter(row => row.closed);
+    byId('refresh').disabled = refreshingQuotes || !portfolio.some(({ position }) => position.quoteSource);
 
     byId('summary').replaceChildren(...[
         ['Controvalore', 'valueEur'], ['Capitale a carico', 'costEur'], ['Guadagno / perdita', 'gainEur']
@@ -622,6 +624,74 @@ function correctedGainReference(position, original, quote, quantity) {
     };
 }
 
+async function saveRefreshedQuote(opened, candidate) {
+    const db = initDB();
+    return db.transaction('rw', db.investments, db.investmentQuotes, async () => {
+        const position = await db.investments.get(opened.id);
+        if (!position || position.revision !== opened.revision) {
+            throw new Error('La posizione è cambiata durante la lettura.');
+        }
+        const history = await db.investmentQuotes.where('investmentId').equals(position.id).toArray();
+        if (quantityHistory(position, history).closed) throw new Error('Questa posizione è chiusa.');
+        const previous = history.find(quote => quote.date === candidate.date);
+        if (previous?.value === candidate.value) return 'unchanged';
+        const quote = {
+            ...makeQuote(position.id, candidate.date, candidate.value, previous?.totalQuantity),
+            manual: false,
+            sourceUrl: position.quoteSource.url
+        };
+        if (candidate.period) quote.sourcePeriod = candidate.period;
+        const changes = {
+            initialQuoteDate: position.initialQuoteDate ?? quote.date,
+            gainReference: correctedGainReference(position, previous, quote, position.gainReference?.quantity),
+            revision: crypto.randomUUID()
+        };
+        validatePosition({ ...position, ...changes });
+        await db.investmentQuotes.put(quote);
+        await db.investments.update(position.id, changes);
+        return previous ? 'updated' : 'created';
+    });
+}
+
+async function refreshQuotes() {
+    if (refreshingQuotes) return;
+    const positions = portfolio.map(row => row.position).filter(position => position.quoteSource);
+    if (!positions.length) return;
+    const dialog = byId('refresh-dialog');
+    const close = byId('refresh-close');
+    const status = byId('refresh-status');
+    const results = byId('refresh-results');
+    const counts = { created: 0, updated: 0, unchanged: 0, failed: 0 };
+    const labels = { created: 'Creata', updated: 'Aggiornata', unchanged: 'Invariata' };
+    refreshingQuotes = true;
+    byId('refresh').disabled = true;
+    close.disabled = true;
+    results.replaceChildren();
+    dialog.showModal();
+    try {
+        for (const [index, position] of positions.entries()) {
+            status.textContent = 'Lettura ' + (index + 1) + ' di ' + positions.length + ' · ' + position.name;
+            try {
+                const candidate = await readLatestQuote(position);
+                const outcome = await saveRefreshedQuote(position, candidate);
+                counts[outcome]++;
+                results.append(element('li', position.name + ' · ' + labels[outcome] + ' · ' +
+                    formatInvestmentDate(candidate.date) + ' · ' + quoteText(position, candidate.value)));
+            } catch (error) {
+                counts.failed++;
+                results.append(element('li', position.name + ' · Da verificare: ' + error.message));
+            }
+        }
+        status.textContent = 'Create ' + counts.created + ' · Aggiornate ' + counts.updated +
+            ' · Invariate ' + counts.unchanged + ' · Da verificare ' + counts.failed;
+    } finally {
+        refreshingQuotes = false;
+        close.disabled = false;
+        close.focus();
+        await renderInvestments();
+    }
+}
+
 function updateQuoteCostPreview() {
     const output = byId('quote-cost-preview');
     output.textContent = '';
@@ -908,6 +978,10 @@ function exportPortfolio() {
 }
 
 export function initializeInvestments() {
+    byId('refresh').addEventListener('click', () => safely(refreshQuotes));
+    byId('refresh-dialog').addEventListener('cancel', event => {
+        if (refreshingQuotes) event.preventDefault();
+    });
     document.addEventListener('click', event => {
         if (openMenu && !openMenu.menu.contains(event.target)) closeActionMenu();
     });

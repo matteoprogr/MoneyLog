@@ -221,6 +221,54 @@ async function readPage(url) {
     throw new Error('Il browser non riesce a leggere la pagina. Riprova dall’app Android.');
 }
 
+function compatibleQuotes(html, position, source) {
+    return extractQuoteCandidates(html, source).filter(row =>
+        (!row.currency || row.currency === position.currency) && row.percent === (position.unit === 'nominal'));
+}
+
+function latestQuote(html, position) {
+    const rows = compatibleQuotes(html, position, position.quoteSource).map(row => {
+        if (row.date || !row.period || !/^\d{4}-\d{2}$/.test(row.order)) return row;
+        const [year, month] = row.order.split('-').map(Number);
+        return { ...row, date: localDate(new Date(year, month, 0)) };
+    });
+    const latest = rows.filter(row => row.date && row.date <= localDate())
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!latest) throw new Error('Nessuna quotazione compatibile con una data o un mese valido.');
+    if (rows.some(row => row.date === latest.date && row.value !== latest.value)) {
+        throw new Error('La fonte mostra prezzi diversi per la stessa data.');
+    }
+    return latest;
+}
+
+export async function readLatestQuote(position) {
+    const { url } = position.quoteSource;
+    const bridge = window.MoneyLogAndroid;
+    if (!bridge) return latestQuote(await readPage(url), position);
+    if (!bridge.readQuotePage) throw new Error('Aggiorna l’app Android per usare la lettura in blocco.');
+    return new Promise((resolve, reject) => {
+        const request = crypto.randomUUID();
+        let lastError;
+        window.moneyLogQuotePageResult = (id, html, error) => {
+            if (id !== request) return;
+            if (error) {
+                delete window.moneyLogQuotePageResult;
+                reject(lastError ?? new Error(error));
+                return;
+            }
+            try {
+                const quote = latestQuote(html, position);
+                delete window.moneyLogQuotePageResult;
+                bridge.finishQuotePage(request);
+                resolve(quote);
+            } catch (cause) {
+                lastError = cause;
+            }
+        };
+        bridge.readQuotePage(url, request);
+    });
+}
+
 async function readSource() {
     if (busy || !byId('form').reportValidity()) return;
     const request = ++revision;
@@ -231,9 +279,7 @@ async function readSource() {
         const source = sourceFromForm();
         const html = await readPage(source.url);
         if (request !== revision) return;
-        const rows = extractQuoteCandidates(html, source);
-        setCandidates(rows.filter(row => (!row.currency || row.currency === selected.currency) &&
-            row.percent === (selected.unit === 'nominal')));
+        setCandidates(compatibleQuotes(html, selected, source));
         byId('status').textContent = candidates.length ?
             'Controlla la rilevazione trovata prima di usarla.' :
             'Nessun dato compatibile. Controlla il nome del campo e la sezione.';

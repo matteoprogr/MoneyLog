@@ -1,4 +1,5 @@
-import { updateTrsLocal, aggiungiMovimento, saveCategoria, trsObject, aggiornaMovimento } from './queryDexie.js';
+import { initDB, updateTrsLocal, aggiungiMovimento, saveCategoria, trsObject, aggiornaMovimento } from './queryDexie.js';
+import { canLinkAccount, localDate } from './investmentData.js';
 import { createCriteri, criteriBudget } from './main.js';
 import { isValid } from './main.js';
 import { showErrorToast, showToast } from './main.js';
@@ -546,6 +547,23 @@ export function overlayBudget() {
 }
 
 
+async function prepareMovementAccounts(form, date, movement) {
+    const accounts = await initDB().accounts.toCollection().sortBy('name');
+    const select = form.elements.accountId;
+    function refresh(selected) {
+        const eligible = accounts.filter(account => (!account.archivedAt || movement?.accountId === account.id) &&
+            canLinkAccount(account, date.value, movement ? movement.dataInserimento : new Date().toISOString()));
+        select.replaceChildren(new Option('Nessun conto', ''), ...eligible.map(account =>
+            new Option(account.name + (account.archivedAt ? ' (archiviato)' : ''), account.id)));
+        if (eligible.some(account => account.id === selected)) select.value = selected;
+        if (selected && !select.value) {
+            select.add(new Option('Conto non disponibile per questa data', selected, false, true));
+        }
+    }
+    refresh(movement?.accountId);
+    date.onchange = () => refresh(select.value);
+}
+
 export async function overlayAddSpesa() {
 const openBtn = document.getElementById('addSpesaBtn');
 const overlay = document.getElementById('spesaFormOverlay');
@@ -585,7 +603,8 @@ openBtn.addEventListener('click', async (e) => {
             const card = catOverlay(cat.categoria, "addSpesa", null);
             catRow.appendChild(card);
         });
-        data.value = new Date().toISOString().split("T")[0];
+        data.value = localDate();
+        await prepareMovementAccounts(form, data);
         overlay.dataset.movement = recuperaTab() ? 'income' : 'expense';
         overlay.classList.add("showOverlay");
     }
@@ -635,6 +654,7 @@ openBtn.addEventListener('click', async (e) => {
             importo: parseFloat(importo.value),
             descrizione: descrizione.value,
             projectId: tab === false && !creatingProject ? projectSelect.value : null,
+            accountId: form.elements.accountId.value,
             ricorrenteId: ricorrenza
         };
 
@@ -651,7 +671,7 @@ openBtn.addEventListener('click', async (e) => {
             form.reset();
             showToast("Transazione aggiunta con successo", "success");
         } catch (err) {
-            showErrorToast("Errore durante il salvataggio", "error");
+            showErrorToast(err.message || "Errore durante il salvataggio", "error");
             console.log("Errore durante il salvataggio", err);
         } finally {
             submit.disabled = false;
@@ -836,6 +856,7 @@ export async function overlayEdit(spesa) {
     document.getElementById('editDescrizione').value = spesa.descrizione;
     const tab = recuperaTab();
     await prepareExpenseProject(form, tab, spesa.projectId);
+    await prepareMovementAccounts(form, document.getElementById('editData'), spesa);
     const slider = document.getElementById('ricorrenteUpdate');
     const ric = document.getElementById('ricorrente-card-upd');
     const previousId = spesa.ricorrenteId;
@@ -880,19 +901,20 @@ export async function overlayEdit(spesa) {
         importo: parseFloat(document.getElementById('editImporto').value),
         descrizione: document.getElementById('editDescrizione').value,
         projectId: tab === false ? form.elements.projectId.value : null,
+        accountId: form.elements.accountId.value,
         ricorrenteId: ricorrenza
      };
     try {
-        overlay.classList.remove('showOverlay');
         const tableName = tab ? "entrate" : "uscite";
         const trsOb = await trsObject(transazione, tableName);
         await aggiornaMovimento(trsOb, tableName, previousId);
+        overlay.classList.remove('showOverlay');
         if (oldCategoria !== formCategoria) await switchRichieste(oldCategoria, formCategoria);
         showToast('Transazione aggiornata', 'success');
 
         createCriteri();
     } catch (err) {
-        showErrorToast("Errore durante la modifica:", "error");
+        showErrorToast(err.message || "Errore durante la modifica", "error");
         console.log(err);
     }
     };

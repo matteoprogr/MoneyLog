@@ -1,7 +1,7 @@
 import Dexie from './libs/dexie.mjs';
 
 import { isValid, showErrorToast, showToast } from './main.js';
-import { investmentUrl, quantityHistory, validateInvestmentBackup } from './investmentData.js';
+import { canLinkAccount, investmentUrl, localDate, nextEditTime, quantityHistory, validDate, validateAccount, validateInvestmentBackup, validatePosition, validateTransfer } from './investmentData.js';
 
 
 let db;
@@ -48,6 +48,13 @@ export function initDB() {
             if (first) await positions.update(id, { initialQuoteDate: first.date });
         }
     });
+    db.version(10).stores({
+        accounts: 'id',
+        deletedTrs: '++id, &[seriesId+data]',
+        uscite: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo], ricorrenteId, accountId',
+        entrate: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo], ricorrenteId, accountId'
+    });
+    db.version(11).stores({ accountTransfers: 'id, fromId, toId' });
 
     initCategorie();
   }
@@ -88,6 +95,7 @@ export async function trsObject(trs, collectionName){
           dataModifica: dataMod,
           data: fomattedISO,
           projectId: collectionName === "uscite" ? trs.projectId || null : null,
+          accountId: trs.accountId || null,
           ricorrenteId: ricorrenteId
         };
 
@@ -97,10 +105,109 @@ export async function trsObject(trs, collectionName){
     }
 }
 
+export async function assertAccountLink(database, movement, allowArchived = false) {
+    if (!movement.accountId) return;
+    const account = await database.accounts.get(movement.accountId);
+    if (!canLinkAccount(account, movement.data, movement.dataInserimento) ||
+        (!allowArchived && account.archivedAt)) {
+        throw new Error('Il conto selezionato non è disponibile per questo movimento.');
+    }
+}
+
+async function accountOperations(db, id) {
+    const [income, expenses, positions, outgoing, incoming] = await Promise.all([
+        db.entrate.where('accountId').equals(id).toArray(),
+        db.uscite.where('accountId').equals(id).toArray(),
+        db.investments.toArray(),
+        db.accountTransfers.where('fromId').equals(id).toArray(),
+        db.accountTransfers.where('toId').equals(id).toArray()
+    ]);
+    return [
+        ...[...income, ...expenses].map(item => [item.data, item.dataInserimento]),
+        ...positions.flatMap(position => (position.purchases ?? [])
+            .filter(item => item.accountId === id).map(item => [item.date, item.insertedAt])),
+        ...[...outgoing, ...incoming].filter(item => !item.deleted).map(item => [item.date, item.updatedAt])
+    ];
+}
+
+function assertAccountDates(account, operations) {
+    if (operations.some(([date, insertedAt]) => !canLinkAccount(account, date, insertedAt))) {
+        throw new Error('La data del saldo iniziale escluderebbe operazioni già collegate al conto.');
+    }
+}
+
+function accountTransaction(db, action) {
+    return db.transaction('rw', db.accounts, db.entrate, db.uscite, db.investments, db.accountTransfers, db.ricorrenze, action);
+}
+
+function assertAccountVersion(current, opened) {
+    if (!current || (current.updatedAt ?? current.createdAt) !== (opened.updatedAt ?? opened.createdAt)) {
+        throw new Error('Il conto è cambiato. Riapri il menu per continuare.');
+    }
+}
+
+export async function saveCashAccount(input, opened) {
+    const db = initDB();
+    await accountTransaction(db, async () => {
+        if (!opened) {
+            await db.accounts.add(validateAccount({ ...input, id: crypto.randomUUID(), createdAt: nextEditTime() }));
+            return;
+        }
+        const current = await db.accounts.get(opened.id);
+        assertAccountVersion(current, opened);
+        const account = validateAccount({ ...current, ...input, updatedAt: nextEditTime(current.updatedAt ?? current.createdAt) });
+        assertAccountDates(account, await accountOperations(db, account.id));
+        await db.accounts.put(account);
+    });
+}
+
+export async function removeCashAccount(opened, archive) {
+    const db = initDB();
+    await accountTransaction(db, async () => {
+        const current = await db.accounts.get(opened.id);
+        assertAccountVersion(current, opened);
+        if (!archive && (await accountOperations(db, current.id)).length) {
+            throw new Error('Il conto ha operazioni collegate. Aggiorna la sezione per archiviarlo.');
+        }
+        const series = db.ricorrenze.filter(item => item.accountId === current.id);
+        await series.modify({ accountId: null, accountFrom: null });
+        if (archive) {
+            const timestamp = nextEditTime(current.updatedAt ?? current.createdAt);
+            await db.accounts.update(current.id, { archivedAt: timestamp, updatedAt: timestamp });
+        } else {
+            await db.accounts.delete(current.id);
+        }
+    });
+}
+
+export async function saveCashTransfer(input, opened, cancel = false) {
+    const db = initDB();
+    await db.transaction('rw', db.accounts, db.accountTransfers, async () => {
+        const current = opened && await db.accountTransfers.get(opened.id);
+        if (opened && (!current || current.deleted || current.updatedAt !== opened.updatedAt)) {
+            throw new Error('Il trasferimento è cambiato. Riapri lo storico.');
+        }
+        const updatedAt = nextEditTime(current?.updatedAt);
+        const transfer = validateTransfer({
+            ...current, ...input, id: current?.id ?? crypto.randomUUID(),
+            createdAt: current?.createdAt ?? updatedAt, updatedAt, deleted: cancel
+        });
+        if (!cancel) {
+            for (const key of ['fromId', 'toId']) {
+                const id = transfer[key];
+                const alreadyLinked = current?.[key] === id;
+                await assertAccountLink(db, { accountId: id, data: transfer.date, dataInserimento: updatedAt }, alreadyLinked);
+            }
+        }
+        await db.accountTransfers.put(transfer);
+    });
+}
+
 export async function aggiungiMovimento(movimento, collectionName, projectName) {
     const database = initDB();
     const collection = database.table(collectionName);
-    return database.transaction("rw", collection, database.progetti, database.ricorrenze, async () => {
+    return database.transaction("rw", collection, database.progetti, database.ricorrenze, database.accounts, async () => {
+        await assertAccountLink(database, movimento);
         if (collectionName === "uscite" && projectName) {
             movimento.projectId = await resolveProject(projectName);
         } else if (movimento.projectId && !await database.progetti.get(movimento.projectId)) {
@@ -111,14 +218,26 @@ export async function aggiungiMovimento(movimento, collectionName, projectName) 
     });
 }
 
-function datiRicorrenza({ descrizione, importo, categoria, data, projectId, ricorrenteId }) {
-    return { descrizione, importo, categoria, data, projectId, ricorrenteId };
+function datiRicorrenza({ descrizione, importo, categoria, data, projectId, ricorrenteId, accountId }, previous) {
+    let accountFrom = null;
+    if (accountId) {
+        const sameSchedule = previous?.accountId === accountId &&
+            previous.ricorrenteId === ricorrenteId && previous.data === data;
+        accountFrom = (sameSchedule && previous.accountFrom) || localDate();
+    }
+    return { descrizione, importo, categoria, data, projectId, ricorrenteId, accountId, accountFrom };
 }
 
 export async function aggiornaMovimento(movimento, collectionName, previousId) {
     const database = initDB();
     const collection = database.table(collectionName);
-    await database.transaction("rw", collection, database.progetti, database.ricorrenze, async () => {
+    await database.transaction("rw", collection, database.progetti, database.ricorrenze, database.accounts, async () => {
+        const original = await collection.get(movimento.id);
+        if (!original) throw new Error("Movimento non trovato");
+        movimento.dataInserimento = original.dataInserimento;
+        const retainingAccount = movimento.accountId === original.accountId;
+        await assertAccountLink(database, movimento, retainingAccount);
+        const previous = previousId ? await database.ricorrenze.get(previousId) : null;
         if (movimento.projectId && !await database.progetti.get(movimento.projectId)) movimento.projectId = null;
         const updated = await collection.update(movimento.id, movimento);
         if (!updated) throw new Error("Movimento non trovato");
@@ -126,7 +245,8 @@ export async function aggiornaMovimento(movimento, collectionName, previousId) {
             await database.ricorrenze.delete(previousId);
         }
         if (movimento.ricorrenteId) {
-            await database.ricorrenze.put(datiRicorrenza(movimento));
+            const account = movimento.accountId && await database.accounts.get(movimento.accountId);
+            await database.ricorrenze.put(datiRicorrenza(account?.archivedAt ? { ...movimento, accountId: null } : movimento, previous));
         }
     });
 }
@@ -153,19 +273,28 @@ export async function checkRicorrenze(){
 
             for(let date = currentDate; date < today;  date = addMonths(date, periodo)){
                 const dataObject = date.toISOString().split('T')[0];
-                const exists = await queryTrns({ dataInizio: dataObject, dataFine: dataObject }, trs.importo > 0);
-                if (exists.some(item => item.ricorrenteId?.split("%")[1] === split[1] ||
-                    (!item.ricorrenteId && item.importo === trs.importo && item.categoria === trs.categoria &&
-                        (item.projectId ?? null) === (trs.projectId ?? null)))) continue;
                 const tableName = trs.importo > 0 ? "entrate" : "uscite";
                 const ricTrs = { ...trs, data: dataObject };
                 const trsOb = await trsObject(ricTrs, tableName);
-                await new Promise(resolve => setTimeout(resolve, 1));
-                await db.transaction("rw", db.table(tableName), db.ricorrenze, async () => {
+                await db.transaction("rw", db.table(tableName), db.ricorrenze, db.accounts, db.deletedTrs, async () => {
                     const current = await db.ricorrenze.get(trs.ricorrenteId);
-                    if (!current) return;
+                    if (!current || current.data !== trs.data || current.importo !== trs.importo ||
+                        current.categoria !== trs.categoria || current.descrizione !== trs.descrizione) return;
+                    if (await db.deletedTrs.where('[seriesId+data]').equals([split[1], dataObject]).count()) return;
+                    const table = db.table(tableName);
+                    const exists = await table.where('data').equals(dataObject).toArray();
+                    if (exists.some(item => item.ricorrenteId?.split("%")[1] === split[1] ||
+                        (!item.ricorrenteId && item.importo === trs.importo && item.categoria === trs.categoria &&
+                            (item.projectId ?? null) === (current.projectId ?? null) &&
+                            (item.accountId ?? null) === (current.accountId ?? null)))) return;
+                    while (await table.get({ dataInserimento: trsOb.dataInserimento })) {
+                        trsOb.dataInserimento = new Date(Date.parse(trsOb.dataInserimento) + 1).toISOString();
+                    }
                     trsOb.projectId = current.projectId ?? null;
-                    await db.table(tableName).add(trsOb);
+                    const account = current.accountId && await db.accounts.get(current.accountId);
+                    trsOb.accountId = current.accountFrom && dataObject > current.accountFrom && !account?.archivedAt &&
+                        canLinkAccount(account, dataObject, trsOb.dataInserimento) ? account.id : null;
+                    await table.add(trsOb);
                 });
             }
         }
@@ -518,17 +647,18 @@ export async function queryTrns(criteri = {}, tabActive) {
 
 ////////////////  ELIMINAZIONE TRANSAZIONI ////////////////////////////////
 export async function deleteSpese(criteri = {}, tabActive) {
-
-    let collezione;
-    if(!tabActive){
-        collezione = db.uscite.toCollection();
-
-    }else if(tabActive){
-        collezione = db.entrate.toCollection();
-    }
-
+    const table = tabActive ? db.entrate : db.uscite;
     if (Array.isArray(criteri) && criteri.length > 0) {
-        await  collezione.filter(trns => criteri.includes(trns.dataInserimento)).delete();
+        await db.transaction('rw', table, db.deletedTrs, async () => {
+            const records = table.filter(trns => criteri.includes(trns.dataInserimento));
+            for (const { ricorrenteId, data } of await records.toArray()) {
+                const seriesId = ricorrenteId?.split('%')[1];
+                if (seriesId && !await db.deletedTrs.where('[seriesId+data]').equals([seriesId, data]).count()) {
+                    await db.deletedTrs.add({ seriesId, data });
+                }
+            }
+            await records.delete();
+        });
     }
 }
 
@@ -687,10 +817,11 @@ async function esportaDatabase() {
   const overlaySpinner = document.getElementById('spinnerOverlay');
   try {
       overlaySpinner.style.display = 'flex';
-      const spese = await queryTrns({},false);
-      const entrate = await queryTrns({},true);
-
-        const result = {
+      const result = await db.transaction('r', db.uscite, db.entrate, db.progetti, db.coloriCategorie,
+        db.budget, db.ricorrenze, db.deletedTrs, db.accounts, db.accountTransfers, db.investments, db.investmentQuotes, async () => {
+        const spese = await queryTrns({}, false);
+        const entrate = await queryTrns({}, true);
+        const backup = {
             id: [],
             dataValuta: [],
             dataInserimento: [],
@@ -699,43 +830,38 @@ async function esportaDatabase() {
             descrizione: [],
             valore: [],
             projectId: [],
+            accountId: [],
             ricorrenteId: [],
             progetti: await getProjects(),
             coloriCategorie: await db.coloriCategorie.toArray(),
             budget: await db.budget.toArray(),
             ricorrenze: await db.ricorrenze.toArray(),
-            investments: await db.transaction('r', db.investments, db.investmentQuotes, async () => ({
-                version: 2,
+            deletedOccurrences: (await db.deletedTrs.toArray()).filter(item => item.seriesId)
+                .map(({ seriesId, data }) => ({ seriesId, data })),
+            accounts: await db.accounts.toArray(),
+            accountTransfers: await db.accountTransfers.toArray(),
+            investments: {
+                version: 3,
                 positions: await db.investments.toArray(),
                 quotes: await db.investmentQuotes.toArray()
-            })),
+            },
             bilancio: 0
         };
 
-        spese.forEach(item => {
-            result.id.push(item.id);
-            result.dataValuta.push(item.data);
-            result.dataInserimento.push(item.dataInserimento);
-            result.dataModifica.push(item.dataModifica);
-            result.categoria.push(item.categoria);
-            result.descrizione.push(item.descrizione || "");
-            result.projectId.push(item.projectId ?? null);
-            result.ricorrenteId.push(item.ricorrenteId ?? null);
-            result.valore.push(item.importo);
-            result.bilancio += item.importo;
-        });
-
-        entrate.forEach(item => {
-            result.id.push(item.id);
-            result.dataValuta.push(item.data);
-            result.dataInserimento.push(item.dataInserimento);
-            result.dataModifica.push(item.dataModifica);
-            result.categoria.push(item.categoria);
-            result.descrizione.push(item.descrizione || "");
-            result.projectId.push(item.projectId ?? null);
-            result.ricorrenteId.push(item.ricorrenteId ?? null);
-            result.valore.push(item.importo);
-            result.bilancio += item.importo;
+        for (const item of [...spese, ...entrate]) {
+            backup.id.push(item.id);
+            backup.dataValuta.push(item.data);
+            backup.dataInserimento.push(item.dataInserimento);
+            backup.dataModifica.push(item.dataModifica);
+            backup.categoria.push(item.categoria);
+            backup.descrizione.push(item.descrizione || "");
+            backup.projectId.push(item.projectId ?? null);
+            backup.accountId.push(item.accountId ?? null);
+            backup.ricorrenteId.push(item.ricorrenteId ?? null);
+            backup.valore.push(item.importo);
+            backup.bilancio += item.importo;
+        }
+        return backup;
         });
 
         const json = JSON.stringify(result, null, 2);
@@ -810,10 +936,45 @@ async function importaDatabase(file) {
         const transazioni = parseDataTabella(result);
         stage = 'Controllo degli investimenti';
         const investments = validateInvestmentBackup(result.investments);
+        stage = 'Controllo dei conti';
+        const accounts = (result.accounts ?? []).map(validateAccount);
+        if (new Set(accounts.map(account => account.id)).size !== accounts.length) {
+            throw new Error('Conti duplicati nel backup.');
+        }
+        const transfers = (result.accountTransfers ?? []).map(validateTransfer);
+        if (new Set(transfers.map(transfer => transfer.id)).size !== transfers.length) {
+            throw new Error('Trasferimenti duplicati nel backup.');
+        }
 
         stage = 'Salvataggio nel database';
         await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, db.coloriCategorie,
-          db.investments, db.investmentQuotes, async () => {
+          db.investments, db.investmentQuotes, db.accounts, db.accountTransfers, db.deletedTrs, async () => {
+            const changedAccounts = [];
+            for (const account of accounts) {
+                const existing = await db.accounts.get(account.id);
+                if (existing && existing.createdAt !== account.createdAt) {
+                    throw new Error('Un conto nel backup ha lo stesso identificativo ma una data di creazione diversa.');
+                }
+                if (!existing || account.updatedAt > (existing.updatedAt ?? existing.createdAt)) {
+                    await db.accounts.put(account);
+                    changedAccounts.push(account);
+                }
+            }
+            for (const transfer of transfers) {
+                const existing = await db.accountTransfers.get(transfer.id);
+                if (existing && existing.createdAt !== transfer.createdAt) {
+                    throw new Error('Un trasferimento nel backup ha lo stesso identificativo ma una data di creazione diversa.');
+                }
+                if (existing && existing.updatedAt >= transfer.updatedAt) continue;
+                if (!transfer.deleted) {
+                    for (const id of [transfer.fromId, transfer.toId]) {
+                        await assertAccountLink(db, {
+                            accountId: id, data: transfer.date, dataInserimento: transfer.updatedAt
+                        }, true);
+                    }
+                }
+                await db.accountTransfers.put(transfer);
+            }
             if (investments) {
                 const protectedDates = new Map();
                 for (const position of investments.positions) {
@@ -831,7 +992,26 @@ async function importaDatabase(file) {
                         if (!position.sales.length) position.sales = existing.sales ?? [];
                         position.quoteSource ??= existing.quoteSource ?? null;
                     }
-                    await db.investments.put({ ...position, initialQuoteDate, revision: crypto.randomUUID() });
+                    if (investments.version < 3 && existing) {
+                        position.plan = existing.plan ?? null;
+                        position.purchases = existing.purchases ?? [];
+                    } else if (existing) {
+                        const purchases = new Map((existing.purchases ?? []).map(item => [item.id, item]));
+                        for (const item of position.purchases) {
+                            if (!purchases.has(item.id)) purchases.set(item.id, item);
+                        }
+                        position.purchases = [...purchases.values()];
+                        if (position.plan && existing.plan?.id === position.plan.id && existing.plan.offset > position.plan.offset) {
+                            position.plan = existing.plan;
+                        }
+                    }
+                    for (const purchase of position.purchases) {
+                        await assertAccountLink(db, {
+                            accountId: purchase.accountId, data: purchase.date, dataInserimento: purchase.insertedAt
+                        }, true);
+                    }
+                    const validated = validatePosition({ ...position, initialQuoteDate });
+                    await db.investments.put({ ...validated, revision: crypto.randomUUID() });
                 }
                 await db.investmentQuotes.bulkPut(investments.quotes.filter(quote => quote.date !== protectedDates.get(quote.investmentId)));
                 for (const position of investments.positions) {
@@ -851,23 +1031,52 @@ async function importaDatabase(file) {
                 await saveCategoria(budget.categoria, 0);
             }
             for (const ricorrenza of result.ricorrenze ?? []) {
-                await db.ricorrenze.put({ ...ricorrenza, projectId: projectIds.get(ricorrenza.projectId) ?? ricorrenza.projectId });
+                const existing = await db.ricorrenze.get(ricorrenza.ricorrenteId);
+                const account = ricorrenza.accountId && await db.accounts.get(ricorrenza.accountId);
+                if (ricorrenza.accountId && !account) {
+                    throw new Error('Conto della ricorrenza assente dal backup.');
+                }
+                await db.ricorrenze.put({ ...existing, ...ricorrenza,
+                    ...(account?.archivedAt ? { accountId: null, accountFrom: null } : {}),
+                    projectId: projectIds.get(ricorrenza.projectId) ?? ricorrenza.projectId });
+            }
+            for (const { seriesId, data } of result.deletedOccurrences ?? []) {
+                if (typeof seriesId !== 'string' || !seriesId || !validDate(data)) {
+                    throw new Error('Occorrenza eliminata non valida.');
+                }
+                if (!await db.deletedTrs.where('[seriesId+data]').equals([seriesId, data]).count()) {
+                    await db.deletedTrs.add({ seriesId, data });
+                }
+                for (const table of [db.uscite, db.entrate]) {
+                    await table.where('data').equals(data)
+                        .and(item => item.ricorrenteId?.split('%')[1] === seriesId).delete();
+                }
             }
             for (const trs of transazioni) {
                 if (!Number(trs.importo)) continue;
                 const table = trs.importo < 0 ? db.uscite : db.entrate;
                 const record = await trsObject({ ...trs, projectId: projectIds.get(trs.projectId) ?? trs.projectId }, table.name);
+                const seriesId = record.ricorrenteId?.split('%')[1];
+                if (seriesId && await db.deletedTrs.where('[seriesId+data]').equals([seriesId, record.data]).count()) continue;
                 const existing = await table.get({ dataInserimento: record.dataInserimento });
                 if (existing) {
                     const associations = {};
                     if (trs.projectId !== undefined) associations.projectId = record.projectId;
                     if (trs.ricorrenteId !== undefined) associations.ricorrenteId = record.ricorrenteId;
+                    if (trs.accountId !== undefined) {
+                        await assertAccountLink(db, { ...existing, accountId: record.accountId }, true);
+                        associations.accountId = record.accountId;
+                    }
                     if (Object.keys(associations).length) await table.update(existing.id, associations);
                 } else {
+                    await assertAccountLink(db, record, true);
                     delete record.id;
                     await table.add(record);
                     await saveCategoria(record.categoria);
                 }
+            }
+            for (const account of changedAccounts) {
+                assertAccountDates(account, await accountOperations(db, account.id));
             }
         });
 
@@ -896,6 +1105,7 @@ function parseDataTabella(dataTabella) {
             categoria: dataTabella.categoria[i],
             descrizione: dataTabella.descrizione[i],
             projectId: dataTabella.projectId?.[i],
+            accountId: dataTabella.accountId?.[i],
             ricorrenteId: dataTabella.ricorrenteId?.[i],
             importo: dataTabella.valore[i]
         });

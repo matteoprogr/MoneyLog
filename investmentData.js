@@ -9,10 +9,85 @@ export function formatInvestmentDate(date) {
     return date ? date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3-$2-$1') : '—';
 }
 
-function validDate(date) {
+export function validDate(date) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
     const parsed = new Date(date);
     return Number.isFinite(+parsed) && parsed.toISOString().slice(0, 10) === date;
+}
+
+function validTimestamp(value) {
+    return typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+}
+
+export function validateAccount({ id, name, openingCents, date, boundary, createdAt, updatedAt = createdAt, archivedAt = null }) {
+    if (typeof id !== 'string' || !id || typeof name !== 'string' || !name.trim() || name.length > 80 ||
+        !Number.isSafeInteger(openingCents) || !validDate(date) || date > localDate() ||
+        !['start', 'end'].includes(boundary) || !validTimestamp(createdAt) || !validTimestamp(updatedAt) ||
+        updatedAt < createdAt || (archivedAt !== null && (!validTimestamp(archivedAt) ||
+            archivedAt < createdAt || archivedAt > updatedAt))) {
+        throw new Error('Controlla nome, saldo e data del conto.');
+    }
+    return { id, name: name.trim(), openingCents, date, boundary, createdAt, updatedAt, archivedAt };
+}
+
+export function validateTransfer({ id, fromId, toId, cents, date, createdAt, updatedAt = createdAt, deleted = false }) {
+    if (![id, fromId, toId].every(value => typeof value === 'string' && value) || fromId === toId ||
+        !Number.isSafeInteger(cents) || cents <= 0 || !validDate(date) || date > localDate() ||
+        !validTimestamp(createdAt) || !validTimestamp(updatedAt) || updatedAt < createdAt || typeof deleted !== 'boolean') {
+        throw new Error('Scegli due conti diversi e controlla importo e data del trasferimento.');
+    }
+    return { id, fromId, toId, cents, date, createdAt, updatedAt, deleted };
+}
+
+export function nextEditTime(previous) {
+    return new Date(Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0)).toISOString();
+}
+
+export function canLinkAccount(account, date, insertedAt) {
+    return Boolean(account && validDate(date) && typeof insertedAt === 'string' &&
+        Number.isFinite(Date.parse(insertedAt)) && insertedAt >= account.createdAt &&
+        (date > account.date || (date === account.date && account.boundary === 'start')));
+}
+
+export function installmentDate(plan) {
+    const [year, month, day] = plan.date.split('-').map(Number);
+    const end = new Date(0);
+    end.setUTCFullYear(year, month + plan.offset * plan.frequency, 0);
+    return end.toISOString().split('T')[0].replace(/\d{2}$/, String(Math.min(day, end.getUTCDate())).padStart(2, '0'));
+}
+
+function validatePlan(plan, unit, purchases) {
+    if (plan == null) return null;
+    const { id, date, frequency, offset, amountCents, paused } = plan;
+    if (unit === 'total' || typeof id !== 'string' || !id || !validDate(date) ||
+        ![1, 3, 12].includes(frequency) || !Number.isInteger(offset) || offset < 0 || offset > 120000 ||
+        !Number.isSafeInteger(amountCents) || amountCents <= 0 || typeof paused !== 'boolean' ||
+        !validDate(installmentDate(plan))) throw new Error('Controlla i dati del piano ricorrente.');
+    const validated = { id, date, frequency, offset, amountCents, paused };
+    const settled = new Set(purchases.map(purchase => purchase.due));
+    while (settled.has(installmentDate(validated))) validated.offset++;
+    if (!validDate(installmentDate(validated))) throw new Error('Scadenza del piano non valida.');
+    return validated;
+}
+
+function validatePurchases(purchases, unit, currency) {
+    if (!Array.isArray(purchases) || (unit === 'total' && purchases.length)) {
+        throw new Error('Storico acquisti non valido.');
+    }
+    const ids = new Set();
+    const dueDates = new Set();
+    return purchases.map(({ id, date, due, quantity, amountCents, feeCents, accountId, insertedAt }) => {
+        if (typeof id !== 'string' || !id || ids.has(id) || dueDates.has(due) || !validDate(date) || date > localDate() ||
+            !validDate(due) || due > localDate() || !Number.isFinite(quantity) || quantity <= 0 ||
+            !Number.isSafeInteger(amountCents) || amountCents <= 0 || !Number.isSafeInteger(feeCents) ||
+            feeCents < 0 || !Number.isSafeInteger(amountCents + feeCents) ||
+            (accountId !== null && (typeof accountId !== 'string' || !accountId || currency !== 'EUR')) ||
+            typeof insertedAt !== 'string' || !Number.isFinite(Date.parse(insertedAt)) ||
+            new Date(insertedAt).toISOString() !== insertedAt) throw new Error('Acquisto ricorrente non valido.');
+        ids.add(id);
+        dueDates.add(due);
+        return { id, date, due, quantity, amountCents, feeCents, accountId, insertedAt };
+    });
 }
 
 export function validIsin(isin) {
@@ -77,6 +152,7 @@ export function validatePosition(position) {
     }
     const url = investmentUrl(position);
     if (typeof url !== 'string') throw new Error('URL di consultazione non valido.');
+    const purchases = validatePurchases(position.purchases ?? [], unit, currency);
     return {
         id, name: name.trim(), type, unit, currency, quantity, averageCost, rate, isin,
         startDate, initialQuoteDate,
@@ -85,6 +161,8 @@ export function validatePosition(position) {
         },
         url: url ? consultationUrl(url) : '',
         sales: validateSales(position.sales ?? [], unit),
+        purchases,
+        plan: validatePlan(position.plan, unit, purchases),
         quoteSource: validateQuoteSource(position.quoteSource)
     };
 }
@@ -133,19 +211,24 @@ export function quantityHistory(position, quotes) {
     const purchases = new Map();
     const snapshots = quotes.filter(quote => quote.totalQuantity !== undefined).map(quote => ({ date: quote.date, quote }));
     const sales = position.sales ?? [];
-    const events = [...snapshots, ...sales.map(sale => ({ date: sale.date, sale }))];
+    const acquisitions = (position.purchases ?? []).map(purchase => ({ date: purchase.date, purchase }));
+    const events = [...acquisitions, ...snapshots, ...sales.map(sale => ({ date: sale.date, sale }))];
     events.sort((a, b) => a.date.localeCompare(b.date));
-    for (const { quote, sale } of events) {
-        if (closed) throw new Error('Il movimento del ' + formatInvestmentDate((quote ?? sale).date) + ' è successivo alla chiusura della posizione.');
+    for (const { date, quote, sale, purchase } of events) {
+        if (closed) throw new Error('Il movimento del ' + formatInvestmentDate(date) + ' è successivo alla chiusura della posizione.');
         if (sale && position.startDate && sale.date < position.startDate) {
             throw new Error('Vendita precedente all’inizio.');
         }
-        if (quote) {
-            if (position.unit !== 'unit' || quote.totalQuantity < grossQuantity) {
+        if (purchase) {
+            if (position.startDate && date < position.startDate) throw new Error('Acquisto precedente all’inizio.');
+            grossQuantity += purchase.quantity;
+        } else if (quote) {
+            if (position.unit !== 'unit' ||
+                (quote.totalQuantity < grossQuantity && !sameQuantity(quote.totalQuantity, grossQuantity))) {
                 throw new Error('Il totale delle quote deve rispettare le quantità registrate prima e dopo questa data.');
             }
-            purchases.set(quote.date, quote.totalQuantity - grossQuantity);
-            grossQuantity = quote.totalQuantity;
+            purchases.set(quote.date, Math.max(0, quote.totalQuantity - grossQuantity));
+            grossQuantity = Math.max(grossQuantity, quote.totalQuantity);
         } else if (position.unit === 'total') {
             closed = sale.remainingValue === 0;
         } else {
@@ -172,7 +255,7 @@ export function positionPerformance(position, date, value, cost) {
 
 export function validateInvestmentBackup(backup) {
     if (backup === undefined) return null;
-    if (![1, 2].includes(backup?.version) || !Array.isArray(backup.positions) || !Array.isArray(backup.quotes)) {
+    if (![1, 2, 3].includes(backup?.version) || !Array.isArray(backup.positions) || !Array.isArray(backup.quotes)) {
         throw new Error('Formato del backup investimenti non valido.');
     }
     const positions = backup.positions.map(validatePosition);
@@ -205,7 +288,37 @@ export function validateInvestmentBackup(backup) {
     return { version: backup.version, positions, quotes };
 }
 
-export function valuation(position, quote) {
+function purchaseBasis(position, history) {
+    const purchases = position.purchases ?? [];
+    const reference = position.gainReference;
+    const average = position.averageCost === null ? null :
+        position.averageCost / (position.unit === 'nominal' ? 100 : 1);
+    let quantity = reference?.quantity ?? position.quantity;
+    let gross = position.quantity;
+    let cost = reference ? reference.value - reference.gain : average === null ? null : quantity * average;
+    const events = [
+        ...purchases.map(purchase => ({ date: purchase.date, purchase })),
+        ...history.filter(quote => quote.totalQuantity !== undefined).map(quote => ({ date: quote.date, quote })),
+        ...(position.sales ?? []).map(sale => ({ date: sale.date, sale }))
+    ].sort((a, b) => a.date.localeCompare(b.date));
+    for (const { date, purchase, quote, sale } of events) {
+        const added = purchase?.quantity ?? (quote ? Math.max(0, quote.totalQuantity - gross) : 0);
+        gross += added;
+        if (reference && (date < reference.date || (date === reference.date && !sale))) continue;
+        if (sale) {
+            if (cost !== null && quantity > 0) cost *= Math.max(0, 1 - sale.quantity / quantity);
+            quantity -= sale.quantity;
+        } else if (added > 0) {
+            const addedCost = purchase ? (purchase.amountCents + purchase.feeCents) / 100 :
+                average === null ? null : added * average;
+            cost = addedCost === null || (cost === null && quantity > 0) ? null : (cost ?? 0) + addedCost;
+            quantity += added;
+        }
+    }
+    return cost;
+}
+
+export function valuation(position, quote, history = [], initialQuantity = position.quantity) {
     const { unit, quantity, averageCost, currency } = position;
     const multiplier = unit === 'total' ? 1 : quantity / (unit === 'nominal' ? 100 : 1);
     const rate = currency === 'EUR' ? 1 : position.rate;
@@ -228,6 +341,7 @@ export function valuation(position, quote) {
             cost -= sale.cost;
         }
     }
+    if (position.purchases?.length) cost = purchaseBasis({ ...position, quantity: initialQuantity }, history);
     if (cost !== null && cost < 0) cost = cost >= -1e-7 ? 0 : null;
     const gain = value === null || cost === null ? null : value - cost;
     const toEuro = amount => amount === null || rate === null ? null : amount * rate;

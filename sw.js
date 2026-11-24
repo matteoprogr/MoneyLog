@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moneylog-cache-v80';
+const CACHE_NAME = 'moneylog-cache-v84';
 const APP_SHELL = [
   './index.html',
   './manifest.json',

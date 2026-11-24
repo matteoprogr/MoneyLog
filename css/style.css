@@ -842,6 +842,10 @@ button {
 .chart-summary > :nth-child(2) { color: #b83232; }
 .chart-summary > :nth-child(3) { color: #3455a4; }
 
+#investment-wealth-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#investment-wealth-summary > :first-child { color: #805b00; }
+#investment-wealth-summary > :last-child { color: #403477; }
+
 [data-new-expense-project]:not([hidden]) { display: grid; gap: 0.25rem; margin: 0.35rem 0; }
 
 #budgetSearchOverlay .budget-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
@@ -1295,6 +1299,21 @@ input:checked + .slider:before { transform: translateX(2em); }
 
 .investment-actions button { width: auto; max-width: 100%; }
 .investment-actions button:disabled { opacity: 0.55; cursor: default; }
+.investment-cash-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  padding-block: 0.5rem;
+  border-bottom: 1px solid #dedee2;
+  overflow-wrap: anywhere;
+}
+.investment-cash-row:has(> .investment-action-menu) { padding-inline-end: 2rem; }
+.investment-cash-row h3 { margin: 0; }
+.investment-cash-row strong,
+.investment-cash-detail { display: block; }
+#investment-archived-accounts,
+#investment-transfer-history { margin-block-start: 0.65rem; }
 .investment-action-menu {
   position: absolute;
   top: 0.3rem;

@@ -1,6 +1,6 @@
-import { initDB } from './queryDexie.js';
+import { assertAccountLink, initDB, removeCashAccount, saveCashAccount, saveCashTransfer } from './queryDexie.js';
 import { showToast, showErrorToast } from './main.js';
-import { consultationUrl, csvCell, formatInvestmentDate, investmentSeries, isinFeedback, localDate, makeQuote, positionPerformance, quantityHistory, validatePosition, valuation } from './investmentData.js';
+import { canLinkAccount, consultationUrl, csvCell, formatInvestmentDate, installmentDate, investmentSeries, isinFeedback, localDate, makeQuote, positionPerformance, quantityHistory, validatePosition, valuation } from './investmentData.js';
 import { initializeQuoteSources, openQuoteSource, readLatestQuote } from './investmentSources.js';
 
 const byId = id => document.getElementById('investment-' + id);
@@ -30,6 +30,14 @@ const editor = byId('editor');
 const quoteEditor = byId('quote-editor');
 const saleEditor = byId('sale-editor');
 const saleForm = byId('sale-form');
+const accountForm = byId('account-form');
+const transferForm = byId('transfer-form');
+const planForm = byId('plan-form');
+const installmentForm = byId('installment-form');
+let editingAccount;
+let editingTransfer;
+let editingPlan;
+let confirmingInstallment;
 
 function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -90,8 +98,13 @@ function metric(label, value) {
 export async function renderInvestments() {
     const version = ++renderVersion;
     const db = initDB();
-    const [positions, quotes] = await db.transaction('r', db.investments, db.investmentQuotes, async () =>
-        [await db.investments.toArray(), await db.investmentQuotes.toArray()]);
+    const [positions, quotes, accounts, movements, transfers] = await db.transaction('r',
+        db.investments, db.investmentQuotes, db.accounts, db.entrate, db.uscite, db.accountTransfers, async () => [
+            await db.investments.toArray(), await db.investmentQuotes.toArray(),
+            await db.accounts.toCollection().sortBy('name'),
+            [...await db.entrate.where('accountId').above('').toArray(), ...await db.uscite.where('accountId').above('').toArray()],
+            await db.accountTransfers.filter(transfer => !transfer.deleted).toArray()
+        ]);
     if (version !== renderVersion) return;
     closeActionMenu();
 
@@ -109,26 +122,343 @@ export async function renderInvestments() {
             if (position.unit === 'total' && lastSale && (!latest || lastSale.date >= latest.date)) {
                 latest = { date: lastSale.date, value: lastSale.remainingValue };
             }
-            return { position, history, latest, quantity, purchases, closed, ...valuation({ ...position, quantity }, latest) };
+            return { position, history, latest, quantity, purchases, closed,
+                ...valuation({ ...position, quantity }, latest, history, position.quantity) };
         });
     portfolio = rows.filter(row => !row.closed);
     closedPositions = rows.filter(row => row.closed);
     byId('refresh').disabled = refreshingQuotes || !portfolio.some(({ position }) => position.quoteSource);
 
+    const liquidity = renderAccounts(accounts, movements, positions, transfers);
+    renderPlans(portfolio);
+    const invested = portfolio.reduce((total, row) => total + (row.valueEur ?? 0), 0);
+    const incomplete = portfolio.some(row => row.valueEur === null);
     byId('summary').replaceChildren(...[
-        ['Controvalore', 'valueEur'], ['Capitale a carico', 'costEur'], ['Guadagno / perdita', 'gainEur']
+        ['Valore degli investimenti', 'valueEur'], ['Capitale a carico', 'costEur'], ['Guadagno / perdita', 'gainEur']
     ].map(([label, field]) => {
         const available = portfolio.filter(row => row[field] !== null);
         const partial = available.length > 0 && available.length < portfolio.length;
         const total = available.length ? available.reduce((sum, row) => sum + row[field], 0) : null;
         return metric(label + (partial ? ' (parziale)' : ''), amount(total));
     }));
+    byId('wealth-summary').replaceChildren(metric('Liquidità', amount(liquidity)),
+        metric(incomplete ? 'Patrimonio (parziale)' : 'Patrimonio', amount(invested + liquidity)));
     byId('list').replaceChildren(...(portfolio.length ? portfolio.map(positionCard) :
         [element('p', 'Nessuna posizione aperta.')]));
     byId('closed').hidden = !closedPositions.length;
     byId('closed-list').replaceChildren(...closedPositions.map(positionCard));
     byId('analytics').hidden = !portfolio.length;
     if (portfolio.length && document.getElementById('investimenti').classList.contains('active')) renderCharts();
+}
+
+function renderAccounts(accounts, movements, positions, transfers) {
+    const balances = new Map(accounts.map(account => [account.id, account.openingCents]));
+    const byAccount = new Map(accounts.map(account => [account.id, account]));
+    const linked = new Set();
+    const today = localDate();
+    for (const movement of movements) {
+        const { accountId, data, dataInserimento, importo } = movement;
+        linked.add(accountId);
+        if (data <= today && canLinkAccount(byAccount.get(accountId), data, dataInserimento)) {
+            balances.set(accountId, balances.get(accountId) + Math.round(importo * 100));
+        }
+    }
+    for (const position of positions) {
+        for (const { accountId, date, insertedAt, amountCents, feeCents } of position.purchases ?? []) {
+            if (accountId) linked.add(accountId);
+            if (canLinkAccount(byAccount.get(accountId), date, insertedAt)) {
+                balances.set(accountId, balances.get(accountId) - amountCents - feeCents);
+            }
+        }
+    }
+    for (const { fromId, toId, date, cents } of transfers) {
+        linked.add(fromId).add(toId);
+        if (date <= today && balances.has(fromId) && balances.has(toId)) {
+            balances.set(fromId, balances.get(fromId) - cents);
+            balances.set(toId, balances.get(toId) + cents);
+        }
+    }
+    const active = accounts.filter(account => !account.archivedAt);
+    const archived = accounts.filter(account => account.archivedAt);
+    const actions = [['Aggiungi conto', () => openAccount()]];
+    if (active.length > 1) actions.push(['Trasferisci liquidità', () => openTransfer(accounts)]);
+    const header = byId('accounts-header');
+    header.querySelector('.investment-action-menu')?.remove();
+    header.append(actionMenu('Azioni Liquidità', actions));
+
+    byId('accounts').replaceChildren(...(active.length ? active.map(account => {
+        const row = element('div', '', 'investment-cash-row');
+        const details = element('div');
+        const balance = balances.get(account.id);
+        details.append(metric(account.name, amount(balance / 100)),
+            element('small', 'Saldo iniziale ' + amount(account.openingCents / 100), 'investment-cash-detail'),
+            element('small', formatInvestmentDate(account.date), 'investment-cash-detail'),
+            element('small', account.boundary === 'end' ? 'Fine giornata' : 'Inizio giornata', 'investment-cash-detail'));
+        const accountActions = [['Modifica', () => openAccount(account, balance)]];
+        if (active.length > 1) accountActions.push(['Trasferisci da questo conto', () => openTransfer(accounts, account.id)]);
+        const archive = linked.has(account.id);
+        accountActions.push([archive ? 'Archivia' : 'Elimina', () => safely(async () => {
+            const message = archive ?
+                'Archiviare «' + account.name + '»? Il saldo di ' + amount(balance / 100) + ' sarà escluso dalla liquidità.' :
+                'Eliminare «' + account.name + '» e il suo saldo iniziale?';
+            if (!window.confirm(message)) return;
+            await removeCashAccount(account, archive);
+            await renderInvestments();
+            showToast(archive ? 'Conto archiviato' : 'Conto eliminato');
+        })]);
+        row.append(details, actionMenu('Azioni conto ' + account.name, accountActions));
+        return row;
+    }) : [element('p', 'Nessun conto attivo.')]));
+    byId('archived-accounts').hidden = !archived.length;
+    byId('archived-list').replaceChildren(...archived.map(account => {
+        const row = element('div', '', 'investment-cash-row');
+        row.append(metric(account.name, 'Archiviato il ' + formatInvestmentDate(account.archivedAt.slice(0, 10))));
+        return row;
+    }));
+    renderTransfers(transfers, accounts);
+    return active.reduce((total, account) => total + balances.get(account.id), 0) / 100;
+}
+
+function openAccount(account = null, currentBalance = null) {
+    editingAccount = { account, balance: currentBalance };
+    accountForm.reset();
+    byId('account-title').textContent = account ? 'Modifica conto' : 'Aggiungi conto';
+    byId('account-error').textContent = '';
+    const { name, balance, date, boundary } = accountForm.elements;
+    name.value = account?.name ?? '';
+    balance.value = account ? account.openingCents / 100 : '';
+    date.max = localDate();
+    date.value = account?.date ?? date.max;
+    boundary.value = account?.boundary ?? 'end';
+    updateAccountPreview();
+    byId('account-editor').showModal();
+}
+
+function updateAccountPreview() {
+    const { account, balance } = editingAccount;
+    const cents = Math.round(accountForm.elements.balance.valueAsNumber * 100);
+    byId('account-preview').textContent = account && Number.isSafeInteger(cents) ?
+        'Saldo attuale ' + amount(balance / 100) + ' · Saldo dopo la modifica ' +
+        amount((balance + cents - account.openingCents) / 100) : '';
+}
+
+async function saveAccount() {
+    const { name, balance, date, boundary } = accountForm.elements;
+    await saveCashAccount({
+        openingCents: Math.round(balance.valueAsNumber * 100),
+        date: date.value, boundary: boundary.value, name: name.value
+    }, editingAccount.account);
+    byId('account-editor').close();
+    await renderInvestments();
+    showToast('Conto salvato');
+}
+
+function renderTransfers(transfers, accounts) {
+    const names = new Map(accounts.map(account => [account.id, account.name]));
+    byId('transfer-history').hidden = !transfers.length;
+    byId('transfers').replaceChildren(...transfers.sort((a, b) => b.date.localeCompare(a.date) ||
+        b.createdAt.localeCompare(a.createdAt)).map(transfer => {
+        const row = element('div', '', 'investment-cash-row');
+        const route = names.get(transfer.fromId) + ' → ' + names.get(transfer.toId);
+        row.append(metric(formatInvestmentDate(transfer.date) + ' · ' + route, amount(transfer.cents / 100)),
+            actionMenu('Azioni trasferimento ' + route, [
+                ['Modifica', () => openTransfer(accounts, transfer.fromId, transfer)],
+                ['Annulla trasferimento', () => safely(async () => {
+                    if (!window.confirm('Annullare il trasferimento di ' + amount(transfer.cents / 100) + ' (' + route + ')?')) return;
+                    await saveCashTransfer({}, transfer, true);
+                    await renderInvestments();
+                    showToast('Trasferimento annullato');
+                })]
+            ]));
+        return row;
+    }));
+}
+
+function openTransfer(accounts, source = '', transfer = null) {
+    editingTransfer = transfer;
+    transferForm.reset();
+    byId('transfer-title').textContent = transfer ? 'Modifica trasferimento' : 'Trasferisci liquidità';
+    byId('transfer-error').textContent = '';
+    const { fromId, toId, amount: price, date } = transferForm.elements;
+    for (const select of [fromId, toId]) {
+        const retained = transfer?.[select.name];
+        const options = accounts.filter(account => !account.archivedAt || account.id === retained);
+        select.replaceChildren(new Option('Seleziona un conto', ''), ...options.map(account =>
+            new Option(account.name + (account.archivedAt ? ' (archiviato)' : ''), account.id)));
+    }
+    fromId.value = source;
+    toId.value = transfer?.toId ?? '';
+    price.value = transfer ? transfer.cents / 100 : '';
+    date.max = localDate();
+    date.value = transfer?.date ?? date.max;
+    updateTransferOptions();
+    byId('transfer-editor').showModal();
+}
+
+function updateTransferOptions() {
+    const { fromId, toId } = transferForm.elements;
+    for (const [select, other] of [[fromId, toId], [toId, fromId]]) {
+        for (const option of select.options) option.disabled = Boolean(option.value && option.value === other.value);
+    }
+}
+
+async function saveTransfer() {
+    const { fromId, toId, amount: price, date } = transferForm.elements;
+    await saveCashTransfer({
+        fromId: fromId.value, toId: toId.value, date: date.value, cents: Math.round(price.valueAsNumber * 100)
+    }, editingTransfer);
+    byId('transfer-editor').close();
+    await renderInvestments();
+    showToast('Trasferimento salvato');
+}
+
+function renderPlans(rows) {
+    const plans = rows.map(row => row.position).filter(position => position.plan);
+    byId('plans-panel').hidden = !plans.length;
+    byId('plans').replaceChildren(...plans.map(position => {
+        const { plan } = position;
+        const due = installmentDate(plan);
+        const row = element('div', '', 'investment-cash-row');
+        const actions = [
+            ['Modifica piano', () => openPlan(position)],
+            [plan.paused ? 'Riprendi piano' : 'Sospendi piano', () => safely(async () => {
+                await persistPlan(position, { ...plan, paused: !plan.paused });
+                await renderInvestments();
+                showToast(plan.paused ? 'Piano ripreso' : 'Piano sospeso');
+            })]
+        ];
+        if (!plan.paused && due <= localDate()) {
+            actions.push(['Conferma rata', () => safely(() => openInstallment(position))],
+                ['Salta rata', () => safely(async () => {
+                    if (window.confirm('Saltare la rata del ' + formatInvestmentDate(due) + '?')) {
+                        await resolveInstallment(position);
+                    }
+                })]);
+        }
+        const details = element('div');
+        details.append(metric(position.name, amount(plan.amountCents / 100, position.currency)),
+            element('small', plan.paused ? 'Sospeso' : 'Scadenza ' + formatInvestmentDate(due), 'investment-cash-detail'));
+        row.append(details, actionMenu('Azioni piano ' + position.name, actions));
+        return row;
+    }));
+}
+
+function openPlan(position) {
+    editingPlan = position;
+    planForm.reset();
+    byId('plan-error').textContent = '';
+    byId('plan-position').textContent = position.name + ' · ' + position.currency;
+    const { amount: price, date, frequency, paused } = planForm.elements;
+    price.value = position.plan ? position.plan.amountCents / 100 : '';
+    date.value = position.plan?.date ?? localDate();
+    date.min = position.startDate ?? '';
+    frequency.value = position.plan?.frequency ?? '1';
+    paused.checked = position.plan?.paused ?? false;
+    byId('plan-editor').showModal();
+}
+
+async function savePlan() {
+    const { amount: price, date, frequency, paused } = planForm.elements;
+    const opened = editingPlan;
+    const existing = opened.plan;
+    const sameSchedule = existing?.date === date.value && existing.frequency === Number(frequency.value);
+    const plan = {
+        id: sameSchedule ? existing.id : crypto.randomUUID(),
+        date: date.value, frequency: Number(frequency.value), offset: sameSchedule ? existing.offset : 0,
+        amountCents: Math.round(price.valueAsNumber * 100), paused: paused.checked
+    };
+    await persistPlan(opened, plan);
+    byId('plan-editor').close();
+    await renderInvestments();
+    showToast('Piano salvato');
+}
+
+async function persistPlan(opened, plan) {
+    const db = initDB();
+    await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
+        const position = await db.investments.get(opened.id);
+        if (!position || position.revision !== opened.revision) throw new Error('La posizione è cambiata. Riapri il piano.');
+        const history = await db.investmentQuotes.where('investmentId').equals(position.id).toArray();
+        if (quantityHistory(position, history).closed) throw new Error('Questa posizione è chiusa.');
+        const updated = validatePosition({ ...position, plan });
+        await db.investments.update(position.id, { plan: updated.plan, revision: crypto.randomUUID() });
+    });
+}
+
+async function openInstallment(position) {
+    confirmingInstallment = position;
+    installmentForm.reset();
+    byId('installment-error').textContent = '';
+    byId('installment-position').textContent = position.name + ' · ' + position.currency + ' · rata del ' +
+        formatInvestmentDate(installmentDate(position.plan));
+    const { date, amount: price, quantity, fees, accountId } = installmentForm.elements;
+    date.max = localDate();
+    date.min = position.startDate ?? '';
+    date.value = date.max;
+    price.value = position.plan.amountCents / 100;
+    fees.value = 0;
+    quantity.closest('label').firstChild.textContent = position.unit === 'nominal' ? 'Nominale acquistato' : 'Quote acquistate';
+    const accounts = position.currency === 'EUR' ? await initDB().accounts.toCollection().sortBy('name') : [];
+    date.onchange = () => {
+        const selected = accountId.value;
+        const now = new Date().toISOString();
+        const eligible = accounts.filter(account => !account.archivedAt && canLinkAccount(account, date.value, now));
+        accountId.replaceChildren(new Option('Nessun conto', ''), ...eligible.map(account => new Option(account.name, account.id)));
+        if (eligible.some(account => account.id === selected)) accountId.value = selected;
+    };
+    date.onchange();
+    byId('installment-editor').showModal();
+}
+
+async function resolveInstallment(opened, purchase = null) {
+    const db = initDB();
+    const due = installmentDate(opened.plan);
+    await db.transaction('rw', db.investments, db.investmentQuotes, db.accounts, async () => {
+        const position = await db.investments.get(opened.id);
+        const plan = position?.plan;
+        if (!plan || opened.revision !== position.revision || plan.paused || due > localDate()) {
+            throw new Error('La rata è cambiata. Riapri il piano.');
+        }
+        const history = await db.investmentQuotes.where('investmentId').equals(position.id).toArray();
+        if (quantityHistory(position, history).closed) throw new Error('Questa posizione è chiusa.');
+        const purchases = [...(position.purchases ?? [])];
+        if (purchase) {
+            if (history.some(quote => quote.date >= purchase.date && quote.totalQuantity !== undefined) ||
+                position.sales?.some(sale => sale.date >= purchase.date)) {
+                throw new Error('Usa una data successiva all’ultima vendita o registrazione del totale delle quote.');
+            }
+            const insertedAt = new Date().toISOString();
+            await assertAccountLink(db, { accountId: purchase.accountId, data: purchase.date, dataInserimento: insertedAt });
+            purchases.push({ ...purchase, id: plan.id + ':' + due, due, insertedAt });
+        }
+        const nextPlan = { ...plan, offset: plan.offset + 1 };
+        const updated = validatePosition({ ...position, purchases, plan: nextPlan });
+        quantityHistory(updated, history);
+        await db.investments.update(position.id, {
+            purchases: updated.purchases, plan: updated.plan, revision: crypto.randomUUID()
+        });
+    });
+    if (purchase) byId('installment-editor').close();
+    await renderInvestments();
+    showToast(purchase ? 'Acquisto registrato' : 'Rata saltata');
+}
+
+function purchaseHistory(position) {
+    const section = element('details', '', 'investment-quote-history');
+    section.append(element('summary', 'Storico acquisti (' + position.purchases.length + ')'));
+    const list = element('ul');
+    for (const purchase of [...position.purchases].sort((a, b) => b.date.localeCompare(a.date))) {
+        const row = element('li');
+        const info = element('div', '', 'investment-quote-info');
+        info.append(element('strong', formatInvestmentDate(purchase.date) + ' · ' +
+            formatNumber.format(purchase.quantity) + (position.unit === 'nominal' ? ' di nominale' : ' quote')),
+        element('small', amount(purchase.amountCents / 100, position.currency) + ' investiti · ' +
+            amount(purchase.feeCents / 100, position.currency) + ' di commissioni · rata del ' + formatInvestmentDate(purchase.due)));
+        row.append(info);
+        list.append(row);
+    }
+    section.append(list);
+    return section;
 }
 
 function positionCard(row) {
@@ -158,8 +488,11 @@ function positionCard(row) {
         metric(position.gainReference && cost !== null ? 'Capitale iniziale stimato' : 'Costo di carico', amount(cost, position.currency)),
         metric('Guadagno / perdita', amount(gain, position.currency) + (gain !== null && cost > 0 ? ' · ' + percent(gain / cost * 100) : ''))
     );
-    if (!closed && position.averageCost !== null && position.unit !== 'total') {
-        fields.append(metric('Prezzo medio di carico', quoteText(position, position.averageCost)));
+    if (!closed && position.unit !== 'total') {
+        const average = position.purchases?.length ?
+            cost === null || !quantity ? null : cost / quantity * (position.unit === 'nominal' ? 100 : 1) :
+            position.averageCost;
+        if (average !== null) fields.append(metric('Prezzo medio di carico', quoteText(position, average)));
     }
     if (position.startDate) fields.append(metric('Inizio investimento', formatInvestmentDate(position.startDate)));
     if (!closed && position.gainReference) {
@@ -185,7 +518,11 @@ function positionCard(row) {
         ['Modifica', () => openPosition(position)],
         [position.unit === 'total' ? 'Registra riscatto' : 'Registra vendita', () => openSale(row)]
     ];
+    if (!closed && position.unit !== 'total' && !position.plan) {
+        actions.push(['Configura piano ricorrente', () => openPlan(position)]);
+    }
     actions.push(['Elimina', () => safely(() => deletePosition(position))]);
+    if (position.purchases?.length) card.append(purchaseHistory(position));
     if (position.sales?.length) card.append(saleHistory(row));
     if (history.length) card.append(quoteHistory(position, history, purchases, closed));
     const wrapper = element('div', '', 'investment-position-wrapper');
@@ -320,12 +657,15 @@ function saleFromForm(position, history, id, input, original) {
     const sales = position.sales ?? [];
     const index = original ? sales.findIndex(sale => sale.id === id) : sales.length;
     if (index < 0) throw new Error('L’operazione non è più presente.');
-    const before = { ...position, sales: sales.filter((sale, offset) => sale.id !== id &&
-        (sale.date < date || (sale.date === date && offset < index))) };
+    const before = {
+        ...position, sales: sales.filter((sale, offset) => sale.id !== id &&
+            (sale.date < date || (sale.date === date && offset < index))),
+        purchases: (position.purchases ?? []).filter(purchase => purchase.date <= date)
+    };
     const pastQuotes = history.filter(quote => quote.date <= date);
     const { quantity: available } = quantityHistory(before, pastQuotes);
     const laterPurchases = history.some(quote => quote.date > date && quote.totalQuantity !== undefined);
-    const basis = valuation({ ...before, quantity: available }, pastQuotes.at(-1)).cost;
+    const basis = valuation({ ...before, quantity: available }, pastQuotes.at(-1), pastQuotes, position.quantity).cost;
     const sameBasis = !laterPurchases && (!position.gainReference || position.gainReference.date <= date);
     const calculated = sameBasis ? (total ? remainingValue === 0 ? basis : null :
         basis === null || !available ? null : basis / available * quantity) : null;
@@ -453,9 +793,10 @@ function updatePositionFields() {
     const total = fields.unit.value === 'total';
     byId('quantity-label').hidden = total;
     fields.quantity.disabled = total;
-    const hasQuantityHistory = portfolio.find(row => row.position.id === editing?.id)?.purchases.size;
-    byId('quantity-label').firstElementChild.textContent = fields.unit.value === 'nominal' ?
-        'Valore nominale detenuto' : hasQuantityHistory ? 'Quantità prima degli acquisti registrati' : 'Quantità o quote';
+    const row = portfolio.find(row => row.position.id === editing?.id);
+    const hasQuantityHistory = row?.purchases.size || row?.position.purchases?.length;
+    byId('quantity-label').firstElementChild.textContent = hasQuantityHistory ? 'Quantità prima degli acquisti registrati' :
+        fields.unit.value === 'nominal' ? 'Valore nominale detenuto' : 'Quantità o quote';
     byId('cost-label').firstElementChild.textContent = {
         unit: 'Prezzo medio di carico (facoltativo)',
         nominal: 'Prezzo medio di carico (% del nominale, facoltativo)',
@@ -537,6 +878,8 @@ async function savePosition() {
         }
         if (manualQuote) await addQuote(db, manualQuote);
         position.sales = existing?.sales ?? [];
+        position.purchases = existing?.purchases ?? [];
+        position.plan = existing?.plan ?? null;
         position.quoteSource = existing?.quoteSource ?? null;
         const history = await db.investmentQuotes.where('investmentId').equals(position.id).sortBy('date');
         const latest = history.at(-1);
@@ -565,9 +908,14 @@ async function savePosition() {
 }
 
 async function deletePosition(position) {
-    if (!window.confirm('Eliminare la posizione e il suo storico?')) return;
+    const linked = position.purchases?.some(purchase => purchase.accountId);
+    if (!window.confirm(linked ?
+        'Eliminare la posizione e annullare anche gli addebiti associati ai suoi acquisti?' :
+        'Eliminare la posizione e il suo storico?')) return;
     const db = initDB();
     await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
+        const current = await db.investments.get(position.id);
+        if (!current || current.revision !== position.revision) throw new Error('La posizione è cambiata. Riapri la scheda.');
         await db.investmentQuotes.where('investmentId').equals(position.id).delete();
         await db.investments.delete(position.id);
     });
@@ -978,6 +1326,33 @@ function exportPortfolio() {
 }
 
 export function initializeInvestments() {
+    accountForm.addEventListener('input', updateAccountPreview);
+    transferForm.addEventListener('change', updateTransferOptions);
+    const saveInstallment = () => {
+        const { date, amount: price, quantity, fees, accountId } = installmentForm.elements;
+        return resolveInstallment(confirmingInstallment, {
+            date: date.value, quantity: quantity.valueAsNumber, accountId: accountId.value || null,
+            amountCents: Math.round(price.valueAsNumber * 100), feeCents: Math.round(fees.valueAsNumber * 100)
+        });
+    };
+    for (const [id, editorForm, save] of [
+        ['account', accountForm, saveAccount], ['transfer', transferForm, saveTransfer],
+        ['plan', planForm, savePlan], ['installment', installmentForm, saveInstallment]
+    ]) {
+        const dialog = byId(id + '-editor');
+        editorForm.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+        editorForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            const submit = editorForm.querySelector('[type="submit"]');
+            if (submit.disabled) return;
+            submit.disabled = true;
+            try {
+                await safely(save, byId(id + '-error'));
+            } finally {
+                submit.disabled = false;
+            }
+        });
+    }
     byId('refresh').addEventListener('click', () => safely(refreshQuotes));
     byId('refresh-dialog').addEventListener('cancel', event => {
         if (refreshingQuotes) event.preventDefault();

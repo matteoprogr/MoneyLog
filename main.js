@@ -116,7 +116,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setupBudgetSearch();
     setupProjectManagement();
     setDateRange("#date-range");
-    checkRicorrenze();
+    checkRicorrenze().then(() => {
+        if (targetId === 'investimenti') return renderInvestments();
+    }).catch(error => showErrorToast('Investimenti: ' + error.message));
     checkRicorrenzeBudgetAnnuale();
     checkRicorrenzeBudgetMensile();
     let container = document.querySelector('.movimenti-container');

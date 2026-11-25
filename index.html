@@ -340,6 +340,10 @@
                 <summary>Storico trasferimenti</summary>
                 <div id="investment-transfers"></div>
             </details>
+            <details id="investment-transfer-plans" open hidden>
+                <summary>Trasferimenti ricorrenti</summary>
+                <div id="investment-transfer-plans-list"></div>
+            </details>
         </section>
         <section id="investment-plans-panel" class="investment-panel" hidden>
             <h3>Piani ricorrenti</h3>
@@ -351,7 +355,7 @@
             <div id="investment-closed-list"></div>
         </details>
         <div id="investment-analytics" hidden>
-            <div class="investment-panel">
+            <div id="investment-line-panel" class="investment-panel">
                 <h3>Andamento delle quotazioni</h3>
                 <div class="investment-fields">
                     <label>Vista<select id="investment-mode">
@@ -365,7 +369,10 @@
                         <option value="30">Ultimi 30 giorni</option>
                         <option value="90">Ultimi 90 giorni</option>
                         <option value="365">Ultimo anno</option>
+                        <option value="custom">Personalizzato</option>
                     </select></label>
+                    <label id="investment-period-from-label" hidden>Dal<input id="investment-period-from" type="date"></label>
+                    <label id="investment-period-to-label" hidden>Al<input id="investment-period-to" type="date"></label>
                 </div>
                 <p id="investment-line-empty">Nessuna quotazione nel periodo selezionato.</p>
                 <div id="investment-line" class="investment-chart" aria-label="Grafico delle quotazioni"></div>
@@ -374,6 +381,7 @@
                 <h3>Composizione del portafoglio</h3>
                 <label>Raggruppa per<select id="investment-group">
                     <option value="position">Strumento</option><option value="type">Tipo di asset</option>
+                    <option value="wealth">Liquidità e investimenti</option>
                 </select></label>
                 <p id="investment-pie-note"></p>
                 <div id="investment-pie" class="investment-chart" aria-label="Grafico della composizione"></div>
@@ -393,7 +401,7 @@
         <form id="investment-account-form">
             <h3 id="investment-account-title">Aggiungi conto</h3>
             <div class="investment-fields">
-                <label>Nome del conto<input name="name" maxlength="80" required></label>
+                <label class="investment-account-name">Nome del conto<input name="name" type="text" maxlength="80" required></label>
                 <label>Saldo iniziale in euro<input name="balance" type="number" step="0.01" required></label>
                 <label>Data del saldo iniziale<input name="date" type="date" required></label>
                 <label>Momento del saldo<select name="boundary">
@@ -416,7 +424,13 @@
                 <label>Conto di origine<select name="fromId" required></select></label>
                 <label>Conto di destinazione<select name="toId" required></select></label>
                 <label>Importo in euro<input name="amount" type="number" min="0.01" step="0.01" required></label>
-                <label>Data del trasferimento<input name="date" type="date" required></label>
+                <label><span id="investment-transfer-date-label">Data del trasferimento</span><input name="date" type="date" required></label>
+                <label id="investment-transfer-frequency-label">Frequenza<select name="frequency">
+                    <option value="0">Una volta</option>
+                    <option value="1">Mensile</option>
+                    <option value="3">Trimestrale</option>
+                    <option value="12">Annuale</option>
+                </select></label>
             </div>
             <p id="investment-transfer-error" role="status"></p>
             <div class="investment-actions">
@@ -438,6 +452,7 @@
                     <option value="12">Annuale</option>
                 </select></label>
                 <label><input name="paused" type="checkbox"> Sospendi piano</label>
+                <label id="investment-plan-account-label">Conto predefinito<select name="accountId"></select></label>
             </div>
             <p id="investment-plan-error" role="status"></p>
             <div class="investment-actions">
@@ -457,6 +472,7 @@
                 <label>Commissioni<input name="fees" type="number" min="0" step="0.01" required></label>
                 <label>Conto <select name="accountId"></select></label>
             </div>
+            <p id="investment-installment-account-note" role="status"></p>
             <p id="investment-installment-error" role="status"></p>
             <div class="investment-actions">
                 <button type="submit">Registra acquisto</button>
@@ -538,6 +554,9 @@
                 <label id="investment-sale-value">Saldo dopo il riscatto (0 per chiudere)<input name="remainingValue" type="number" min="0" step="any"></label>
                 <label>Costo attribuito (facoltativo)<input name="cost" type="number" min="0" step="any"></label>
                 <label id="investment-sale-rate">Euro per unità di valuta<input name="rate" type="number" min="0" step="any"></label>
+                <label>Conto di accredito<select name="accountId"></select></label>
+                <label id="investment-sale-credit-date" hidden>Data di accredito<input name="creditDate" type="date" disabled></label>
+                <label id="investment-sale-credit-amount" hidden>Importo accreditato in euro (facoltativo)<input name="creditAmount" type="number" min="0" step="0.01" disabled></label>
             </div>
             <dl id="investment-sale-preview" class="investment-sale-totals" aria-live="polite"></dl>
             <p id="investment-sale-preview-error" role="status"></p>
@@ -587,7 +606,7 @@
     </div>
     <div class="btn" id="android-download">
         <h3>App Android</h3>
-        <p id="android-apk-details">Versione 1.1.14</p>
+        <p id="android-apk-details">Versione 1.1.15</p>
         <a id="android-apk-link" href="./downloads/MoneyLog.apk" download="MoneyLog.apk">Scarica APK per Android</a>
     </div>
 
@@ -706,7 +725,9 @@
         <p>Da una posizione aperta con quote o nominale puoi scegliere <strong>Configura piano ricorrente</strong> e impostare una frequenza mensile, trimestrale o annuale. Dai <strong>tre puntini</strong> del singolo piano puoi modificarlo, sospenderlo o riprenderlo. Quando una rata è scaduta e il piano è attivo, puoi confermarla o saltarla. La conferma registra l’acquisto e, se selezioni un conto in euro, ne scala l’importo e le commissioni dalla liquidità. L’addebito resta fuori dai report delle spese.</p>
         <p>Dai <strong>tre puntini</strong> di <strong>Liquidità</strong> puoi aggiungere un conto in euro e indicare il momento del saldo iniziale. Per esempio, con 1.000 € a fine giornata del 10 novembre, un’uscita collegata di 80 € dell’11 novembre porta il saldo a 920 €. I movimenti inseriti prima della creazione del conto e quelli già compresi nel saldo iniziale restano fuori dal calcolo.</p>
         <p>Dal menu del singolo conto puoi modificare i dati di apertura e vedere in anteprima l’effetto sul saldo. Puoi eliminare un conto senza operazioni oppure archiviare un conto collegato a operazioni. L’archiviazione conserva i collegamenti storici ed esclude il conto dai saldi attivi e dalle nuove operazioni.</p>
-        <p>Usa <strong>Trasferisci liquidità</strong> nel menu generale o in quello del conto di origine. Se trasferisci 200 € tra due conti attivi, il primo saldo scende di 200 € e il secondo sale di 200 €. Liquidità complessiva, patrimonio e report delle entrate e delle uscite restano invariati. Dallo <strong>Storico trasferimenti</strong> puoi correggere o annullare l’operazione su entrambi i conti.</p>
+        <p>Usa <strong>Trasferisci liquidità</strong> per un trasferimento singolo o ricorrente. Se trasferisci 200 € tra due conti attivi, il primo saldo scende di 200 € e il secondo sale di 200 €. Liquidità complessiva, patrimonio e report delle entrate e delle uscite restano invariati. Puoi confermare o saltare le rate scadute, sospendere il piano e correggere o annullare un trasferimento dallo storico.</p>
+        <p>Durante una vendita o un riscatto puoi scegliere il conto su cui accreditare l’incasso netto. Nei piani di investimento in euro puoi indicare il conto da proporre quando confermi una rata.</p>
+        <p>Nel grafico delle quotazioni puoi scegliere un periodo <strong>Personalizzato</strong>, con due date incluse. Nel grafico a torta scegli <strong>Liquidità e investimenti</strong> per confrontare il totale dei conti attivi con il controvalore delle posizioni aperte.</p>
         <p>Negli storici, i tre puntini aprono le azioni della singola riga. La <strong>quotazione iniziale</strong> offre solo <strong>Modifica</strong>. Quando esaurisci una posizione, la ritrovi con il suo storico in <strong>Posizioni chiuse</strong>. Il menu della scheda chiusa offre solo <strong>Elimina</strong>, mentre puoi ancora modificare o eliminare una vendita o un riscatto dal relativo storico.</p>
         <p>Premi <strong>Aggiorna quotazioni</strong> (🔄) accanto al <strong>+</strong> per leggere le fonti configurate delle posizioni aperte. MoneyLog usa la data pubblicata e aggiunge o aggiorna la quotazione di quel giorno. Per le fonti mensili usa l’ultimo giorno del mese e mostra il periodo originale nello storico. Il riepilogo finale indica quali titoli richiedono una verifica. Usa l’app Android per le fonti che il browser non riesce a leggere.</p>
         </dialog>

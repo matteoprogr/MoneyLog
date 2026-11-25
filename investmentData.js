@@ -56,14 +56,26 @@ export function installmentDate(plan) {
     return end.toISOString().split('T')[0].replace(/\d{2}$/, String(Math.min(day, end.getUTCDate())).padStart(2, '0'));
 }
 
+export function validateTransferPlan({ id, fromId, toId, cents, date, frequency, offset, paused, updatedAt }) {
+    if (![id, fromId, toId].every(value => typeof value === 'string' && value) || fromId === toId ||
+        !Number.isSafeInteger(cents) || cents <= 0 || !validDate(date) || ![1, 3, 12].includes(frequency) ||
+        !Number.isInteger(offset) || offset < 0 || offset > 120000 || typeof paused !== 'boolean' ||
+        !validTimestamp(updatedAt) || !validDate(installmentDate({ date, offset, frequency }))) {
+        throw new Error('Controlla conti, importo e scadenza del trasferimento ricorrente.');
+    }
+    return { id, fromId, toId, cents, date, frequency, offset, paused, updatedAt };
+}
+
 function validatePlan(plan, unit, purchases) {
     if (plan == null) return null;
-    const { id, date, frequency, offset, amountCents, paused } = plan;
+    const { id, date, frequency, offset, amountCents, paused, accountId = null } = plan;
     if (unit === 'total' || typeof id !== 'string' || !id || !validDate(date) ||
         ![1, 3, 12].includes(frequency) || !Number.isInteger(offset) || offset < 0 || offset > 120000 ||
         !Number.isSafeInteger(amountCents) || amountCents <= 0 || typeof paused !== 'boolean' ||
-        !validDate(installmentDate(plan))) throw new Error('Controlla i dati del piano ricorrente.');
-    const validated = { id, date, frequency, offset, amountCents, paused };
+        !validDate(installmentDate(plan)) || (accountId !== null && (typeof accountId !== 'string' || !accountId))) {
+        throw new Error('Controlla i dati del piano ricorrente.');
+    }
+    const validated = { id, date, frequency, offset, amountCents, paused, accountId };
     const settled = new Set(purchases.map(purchase => purchase.due));
     while (settled.has(installmentDate(validated))) validated.offset++;
     if (!validDate(installmentDate(validated))) throw new Error('Scadenza del piano non valida.');
@@ -153,6 +165,8 @@ export function validatePosition(position) {
     const url = investmentUrl(position);
     if (typeof url !== 'string') throw new Error('URL di consultazione non valido.');
     const purchases = validatePurchases(position.purchases ?? [], unit, currency);
+    const plan = validatePlan(position.plan, unit, purchases);
+    if (plan?.accountId && currency !== 'EUR') throw new Error('Il conto predefinito richiede una posizione in euro.');
     return {
         id, name: name.trim(), type, unit, currency, quantity, averageCost, rate, isin,
         startDate, initialQuoteDate,
@@ -160,17 +174,23 @@ export function validatePosition(position) {
             gain: gainReference.gain, value: gainReference.value, date: gainReference.date, quantity: gainReference.quantity
         },
         url: url ? consultationUrl(url) : '',
-        sales: validateSales(position.sales ?? [], unit),
+        sales: validateSales(position.sales ?? [], unit, currency),
         purchases,
-        plan: validatePlan(position.plan, unit, purchases),
+        plan,
         quoteSource: validateQuoteSource(position.quoteSource)
     };
 }
 
-function validateSales(sales, unit) {
+export function saleCreditCents(sale, currency) {
+    if (!sale.credit) return null;
+    return sale.credit.euroCents ?? Math.round((sale.gross - sale.fees) *
+        (currency === 'EUR' ? 1 : sale.rate ?? NaN) * 100);
+}
+
+function validateSales(sales, unit, currency) {
     if (!Array.isArray(sales)) throw new Error('Storico vendite non valido.');
     const ids = new Set();
-    return sales.map(({ id, date, quantity, gross, fees, cost, rate, remainingValue, estimated }) => {
+    return sales.map(({ id, date, quantity, gross, fees, cost, rate, remainingValue, estimated, credit = null }) => {
         if (typeof id !== 'string' || !id || ids.has(id) || !validDate(date) || date > localDate() ||
             !nonNegative(gross) || !nonNegative(fees) ||
             (cost !== null && !nonNegative(cost)) ||
@@ -180,7 +200,16 @@ function validateSales(sales, unit) {
             throw new Error('Controlla data, quantità, incasso, commissioni e costo attribuito.');
         }
         ids.add(id);
-        return { id, date, quantity, gross, fees, cost, rate, remainingValue, estimated: estimated === true };
+        const cents = saleCreditCents({ credit, gross, fees, rate }, currency);
+        if (credit !== null && (typeof credit.accountId !== 'string' || !credit.accountId ||
+            !validDate(credit.date) || credit.date < date ||
+            !validTimestamp(credit.insertedAt) ||
+            (credit.euroCents !== null && (currency === 'EUR' || !Number.isSafeInteger(credit.euroCents))) ||
+            !Number.isSafeInteger(cents) || cents < 0 || gross < fees)) {
+            throw new Error('Controlla conto, data e importo dell’accredito.');
+        }
+        return { id, date, quantity, gross, fees, cost, rate, remainingValue, estimated: estimated === true,
+            credit: credit && { accountId: credit.accountId, date: credit.date, insertedAt: credit.insertedAt, euroCents: credit.euroCents } };
     });
 }
 
@@ -255,7 +284,7 @@ export function positionPerformance(position, date, value, cost) {
 
 export function validateInvestmentBackup(backup) {
     if (backup === undefined) return null;
-    if (![1, 2, 3].includes(backup?.version) || !Array.isArray(backup.positions) || !Array.isArray(backup.quotes)) {
+    if (![1, 2, 3, 4].includes(backup?.version) || !Array.isArray(backup.positions) || !Array.isArray(backup.quotes)) {
         throw new Error('Formato del backup investimenti non valido.');
     }
     const positions = backup.positions.map(validatePosition);

@@ -1,6 +1,6 @@
-import { assertAccountLink, initDB, removeCashAccount, saveCashAccount, saveCashTransfer } from './queryDexie.js';
+import { addTransferPlan, assertAccountLink, initDB, removeCashAccount, saveCashAccount, saveCashTransfer, updateTransferPlan } from './queryDexie.js';
 import { showToast, showErrorToast } from './main.js';
-import { canLinkAccount, consultationUrl, csvCell, formatInvestmentDate, installmentDate, investmentSeries, isinFeedback, localDate, makeQuote, positionPerformance, quantityHistory, validatePosition, valuation } from './investmentData.js';
+import { canLinkAccount, consultationUrl, csvCell, formatInvestmentDate, installmentDate, investmentSeries, isinFeedback, localDate, makeQuote, positionPerformance, quantityHistory, saleCreditCents, validDate, validatePosition, valuation } from './investmentData.js';
 import { initializeQuoteSources, openQuoteSource, readLatestQuote } from './investmentSources.js';
 
 const byId = id => document.getElementById('investment-' + id);
@@ -14,6 +14,8 @@ const quoteText = (position, value) => position.unit === 'nominal' ? percent(val
     formatNumber.format(value) + ' ' + position.currency;
 
 let portfolio = [];
+let cashTotal = 0;
+let cashAccounts = [];
 let closedPositions = [];
 let refreshingQuotes = false;
 let editing;
@@ -98,12 +100,13 @@ function metric(label, value) {
 export async function renderInvestments() {
     const version = ++renderVersion;
     const db = initDB();
-    const [positions, quotes, accounts, movements, transfers] = await db.transaction('r',
-        db.investments, db.investmentQuotes, db.accounts, db.entrate, db.uscite, db.accountTransfers, async () => [
+    const [positions, quotes, accounts, movements, transfers, transferPlans] = await db.transaction('r',
+        db.investments, db.investmentQuotes, db.accounts, db.entrate, db.uscite, db.accountTransfers, db.transferPlans, async () => [
             await db.investments.toArray(), await db.investmentQuotes.toArray(),
             await db.accounts.toCollection().sortBy('name'),
             [...await db.entrate.where('accountId').above('').toArray(), ...await db.uscite.where('accountId').above('').toArray()],
-            await db.accountTransfers.filter(transfer => !transfer.deleted).toArray()
+            await db.accountTransfers.filter(transfer => !transfer.deleted).toArray(),
+            await db.transferPlans.toArray()
         ]);
     if (version !== renderVersion) return;
     closeActionMenu();
@@ -129,7 +132,8 @@ export async function renderInvestments() {
     closedPositions = rows.filter(row => row.closed);
     byId('refresh').disabled = refreshingQuotes || !portfolio.some(({ position }) => position.quoteSource);
 
-    const liquidity = renderAccounts(accounts, movements, positions, transfers);
+    cashAccounts = accounts;
+    cashTotal = renderAccounts(accounts, movements, positions, transfers, transferPlans);
     renderPlans(portfolio);
     const invested = portfolio.reduce((total, row) => total + (row.valueEur ?? 0), 0);
     const incomplete = portfolio.some(row => row.valueEur === null);
@@ -141,17 +145,18 @@ export async function renderInvestments() {
         const total = available.length ? available.reduce((sum, row) => sum + row[field], 0) : null;
         return metric(label + (partial ? ' (parziale)' : ''), amount(total));
     }));
-    byId('wealth-summary').replaceChildren(metric('Liquidità', amount(liquidity)),
-        metric(incomplete ? 'Patrimonio (parziale)' : 'Patrimonio', amount(invested + liquidity)));
+    byId('wealth-summary').replaceChildren(metric('Liquidità', amount(cashTotal)),
+        metric(incomplete ? 'Patrimonio (parziale)' : 'Patrimonio', amount(invested + cashTotal)));
     byId('list').replaceChildren(...(portfolio.length ? portfolio.map(positionCard) :
         [element('p', 'Nessuna posizione aperta.')]));
     byId('closed').hidden = !closedPositions.length;
     byId('closed-list').replaceChildren(...closedPositions.map(positionCard));
-    byId('analytics').hidden = !portfolio.length;
-    if (portfolio.length && document.getElementById('investimenti').classList.contains('active')) renderCharts();
+    byId('analytics').hidden = !portfolio.length && !accounts.some(account => !account.archivedAt);
+    byId('line-panel').hidden = !portfolio.length;
+    if (!byId('analytics').hidden && document.getElementById('investimenti').classList.contains('active')) renderCharts();
 }
 
-function renderAccounts(accounts, movements, positions, transfers) {
+function renderAccounts(accounts, movements, positions, transfers, transferPlans) {
     const balances = new Map(accounts.map(account => [account.id, account.openingCents]));
     const byAccount = new Map(accounts.map(account => [account.id, account]));
     const linked = new Set();
@@ -164,6 +169,14 @@ function renderAccounts(accounts, movements, positions, transfers) {
         }
     }
     for (const position of positions) {
+        for (const sale of position.sales ?? []) {
+            const credit = sale.credit;
+            if (!credit) continue;
+            linked.add(credit.accountId);
+            if (credit.date <= today && canLinkAccount(byAccount.get(credit.accountId), credit.date, credit.insertedAt)) {
+                balances.set(credit.accountId, balances.get(credit.accountId) + saleCreditCents(sale, position.currency));
+            }
+        }
         for (const { accountId, date, insertedAt, amountCents, feeCents } of position.purchases ?? []) {
             if (accountId) linked.add(accountId);
             if (canLinkAccount(byAccount.get(accountId), date, insertedAt)) {
@@ -171,6 +184,7 @@ function renderAccounts(accounts, movements, positions, transfers) {
             }
         }
     }
+    for (const plan of transferPlans) linked.add(plan.fromId).add(plan.toId);
     for (const { fromId, toId, date, cents } of transfers) {
         linked.add(fromId).add(toId);
         if (date <= today && balances.has(fromId) && balances.has(toId)) {
@@ -216,6 +230,7 @@ function renderAccounts(accounts, movements, positions, transfers) {
         return row;
     }));
     renderTransfers(transfers, accounts);
+    renderTransferPlans(transferPlans, byAccount);
     return active.reduce((total, account) => total + balances.get(account.id), 0) / 100;
 }
 
@@ -274,12 +289,41 @@ function renderTransfers(transfers, accounts) {
     }));
 }
 
+function renderTransferPlans(plans, accounts) {
+    byId('transfer-plans').hidden = !plans.length;
+    byId('transfer-plans-list').replaceChildren(...plans.map(plan => {
+        const from = accounts.get(plan.fromId);
+        const to = accounts.get(plan.toId);
+        const unavailable = !from || !to || from.archivedAt || to.archivedAt;
+        const route = (from?.name ?? 'Conto non disponibile') + ' → ' + (to?.name ?? 'Conto non disponibile');
+        const due = installmentDate(plan);
+        const apply = action => safely(async () => {
+            await updateTransferPlan(plan, action);
+            await renderInvestments();
+        });
+        const actions = [[plan.paused ? 'Riprendi piano' : 'Sospendi piano', () => apply('toggle')]];
+        if (!plan.paused && due <= localDate()) {
+            if (!unavailable) actions.push(['Conferma rata', () => apply('confirm')]);
+            actions.push(['Salta rata', () => {
+                if (window.confirm('Saltare il trasferimento del ' + formatInvestmentDate(due) + '?')) apply('skip');
+            }]);
+        }
+        const status = unavailable ? 'Conto non disponibile' : plan.paused ? 'Sospeso' : 'Scadenza ' + formatInvestmentDate(due);
+        const row = element('div', '', 'investment-cash-row');
+        row.append(metric(route, amount(plan.cents / 100) + ' · ' + status),
+            actionMenu('Azioni trasferimento ricorrente ' + route, actions));
+        return row;
+    }));
+}
+
 function openTransfer(accounts, source = '', transfer = null) {
     editingTransfer = transfer;
     transferForm.reset();
     byId('transfer-title').textContent = transfer ? 'Modifica trasferimento' : 'Trasferisci liquidità';
     byId('transfer-error').textContent = '';
-    const { fromId, toId, amount: price, date } = transferForm.elements;
+    const { fromId, toId, amount: price, date, frequency } = transferForm.elements;
+    byId('transfer-frequency-label').hidden = Boolean(transfer);
+    frequency.disabled = Boolean(transfer);
     for (const select of [fromId, toId]) {
         const retained = transfer?.[select.name];
         const options = accounts.filter(account => !account.archivedAt || account.id === retained);
@@ -289,27 +333,32 @@ function openTransfer(accounts, source = '', transfer = null) {
     fromId.value = source;
     toId.value = transfer?.toId ?? '';
     price.value = transfer ? transfer.cents / 100 : '';
-    date.max = localDate();
-    date.value = transfer?.date ?? date.max;
+    date.value = transfer?.date ?? localDate();
     updateTransferOptions();
     byId('transfer-editor').showModal();
 }
 
 function updateTransferOptions() {
-    const { fromId, toId } = transferForm.elements;
+    const { fromId, toId, date, frequency } = transferForm.elements;
+    const recurring = frequency.value !== '0';
+    date.max = recurring ? '' : localDate();
+    byId('transfer-date-label').textContent = recurring ? 'Prima scadenza' : 'Data del trasferimento';
     for (const [select, other] of [[fromId, toId], [toId, fromId]]) {
         for (const option of select.options) option.disabled = Boolean(option.value && option.value === other.value);
     }
 }
 
 async function saveTransfer() {
-    const { fromId, toId, amount: price, date } = transferForm.elements;
-    await saveCashTransfer({
+    const { fromId, toId, amount: price, date, frequency } = transferForm.elements;
+    const input = {
         fromId: fromId.value, toId: toId.value, date: date.value, cents: Math.round(price.valueAsNumber * 100)
-    }, editingTransfer);
+    };
+    const recurring = !editingTransfer && Number(frequency.value) > 0;
+    if (recurring) await addTransferPlan({ ...input, frequency: Number(frequency.value) });
+    else await saveCashTransfer(input, editingTransfer);
     byId('transfer-editor').close();
     await renderInvestments();
-    showToast('Trasferimento salvato');
+    showToast(recurring ? 'Trasferimento ricorrente configurato' : 'Trasferimento salvato');
 }
 
 function renderPlans(rows) {
@@ -348,24 +397,32 @@ function openPlan(position) {
     planForm.reset();
     byId('plan-error').textContent = '';
     byId('plan-position').textContent = position.name + ' · ' + position.currency;
-    const { amount: price, date, frequency, paused } = planForm.elements;
+    const { amount: price, date, frequency, paused, accountId } = planForm.elements;
     price.value = position.plan ? position.plan.amountCents / 100 : '';
     date.value = position.plan?.date ?? localDate();
     date.min = position.startDate ?? '';
     frequency.value = position.plan?.frequency ?? '1';
     paused.checked = position.plan?.paused ?? false;
+    accountId.disabled = position.currency !== 'EUR';
+    byId('plan-account-label').hidden = accountId.disabled;
+    const selected = position.plan?.accountId ?? '';
+    accountId.replaceChildren(new Option('Nessun conto', ''), ...cashAccounts
+        .filter(account => !account.archivedAt || account.id === selected)
+        .map(account => new Option(account.name + (account.archivedAt ? ' (archiviato)' : ''), account.id)));
+    accountId.value = selected;
     byId('plan-editor').showModal();
 }
 
 async function savePlan() {
-    const { amount: price, date, frequency, paused } = planForm.elements;
+    const { amount: price, date, frequency, paused, accountId } = planForm.elements;
     const opened = editingPlan;
     const existing = opened.plan;
     const sameSchedule = existing?.date === date.value && existing.frequency === Number(frequency.value);
     const plan = {
         id: sameSchedule ? existing.id : crypto.randomUUID(),
         date: date.value, frequency: Number(frequency.value), offset: sameSchedule ? existing.offset : 0,
-        amountCents: Math.round(price.valueAsNumber * 100), paused: paused.checked
+        amountCents: Math.round(price.valueAsNumber * 100), paused: paused.checked,
+        accountId: accountId.disabled ? null : accountId.value || null
     };
     await persistPlan(opened, plan);
     byId('plan-editor').close();
@@ -375,12 +432,16 @@ async function savePlan() {
 
 async function persistPlan(opened, plan) {
     const db = initDB();
-    await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
+    await db.transaction('rw', db.investments, db.investmentQuotes, db.accounts, async () => {
         const position = await db.investments.get(opened.id);
         if (!position || position.revision !== opened.revision) throw new Error('La posizione è cambiata. Riapri il piano.');
         const history = await db.investmentQuotes.where('investmentId').equals(position.id).toArray();
         if (quantityHistory(position, history).closed) throw new Error('Questa posizione è chiusa.');
         const updated = validatePosition({ ...position, plan });
+        if (plan.accountId && plan.accountId !== position.plan?.accountId) {
+            const account = await db.accounts.get(plan.accountId);
+            if (!account || account.archivedAt) throw new Error('Scegli un conto attivo.');
+        }
         await db.investments.update(position.id, { plan: updated.plan, revision: crypto.randomUUID() });
     });
 }
@@ -399,14 +460,31 @@ async function openInstallment(position) {
     fees.value = 0;
     quantity.closest('label').firstChild.textContent = position.unit === 'nominal' ? 'Nominale acquistato' : 'Quote acquistate';
     const accounts = position.currency === 'EUR' ? await initDB().accounts.toCollection().sortBy('name') : [];
-    date.onchange = () => {
-        const selected = accountId.value;
+    let preferred = position.plan.accountId ?? 'none';
+    const note = byId('installment-account-note');
+    const updateAccounts = () => {
         const now = new Date().toISOString();
         const eligible = accounts.filter(account => !account.archivedAt && canLinkAccount(account, date.value, now));
-        accountId.replaceChildren(new Option('Nessun conto', ''), ...eligible.map(account => new Option(account.name, account.id)));
-        if (eligible.some(account => account.id === selected)) accountId.value = selected;
+        accountId.replaceChildren(new Option('Nessun conto', 'none'), ...eligible.map(account => new Option(account.name, account.id)));
+        const unavailable = preferred !== 'none' && !eligible.some(account => account.id === preferred);
+        accountId.required = unavailable;
+        if (unavailable) {
+            const prompt = new Option('Scegli un conto', '', false, true);
+            prompt.disabled = true;
+            accountId.prepend(prompt);
+            accountId.value = '';
+        } else {
+            accountId.value = preferred;
+        }
+        note.textContent = unavailable ?
+            'Il conto indicato non è disponibile per questa data. Scegli un altro conto o Nessun conto.' : '';
     };
-    date.onchange();
+    date.onchange = updateAccounts;
+    accountId.onchange = () => {
+        preferred = accountId.value;
+        note.textContent = '';
+    };
+    updateAccounts();
     byId('installment-editor').showModal();
 }
 
@@ -590,6 +668,11 @@ function saleHistory(row) {
             element('dd', formatNumber.format(sale.quantity)));
         else info.append(element('dt', 'Saldo residuo'), element('dd', amount(sale.remainingValue, position.currency)));
         if (sale.rate !== null) info.append(element('dt', 'Incasso in euro'), element('dd', amount(net * sale.rate)));
+        if (sale.credit) {
+            const account = cashAccounts.find(item => item.id === sale.credit.accountId);
+            info.append(element('dt', 'Accredito · ' + (account?.name ?? 'Conto non disponibile')),
+                element('dd', amount(saleCreditCents(sale, position.currency) / 100) + ' · ' + formatInvestmentDate(sale.credit.date)));
+        }
         info.append(element('dt', sale.estimated ? 'Risultato stimato' : 'Risultato'),
             element('dd', sale.cost === null ? 'Non calcolabile' : amount(net - sale.cost, position.currency)));
         const item = element('li', '', 'investment-sale-entry');
@@ -621,6 +704,13 @@ function openSale(row, original = null) {
     fields.quantity.required = !total;
     fields.remainingValue.required = total;
     fields.rate.value = (original ? original.rate : position.rate) ?? '';
+    const account = original?.credit?.accountId ?? '';
+    fields.accountId.replaceChildren(new Option('Nessun conto', ''), ...cashAccounts
+        .filter(item => !item.archivedAt || item.id === account)
+        .map(item => new Option(item.name + (item.archivedAt ? ' (archiviato)' : ''), item.id)));
+    fields.accountId.value = account;
+    fields.creditDate.value = original?.credit?.date ?? '';
+    fields.creditAmount.value = original?.credit?.euroCents == null ? '' : original.credit.euroCents / 100;
     fields.rate.disabled = position.currency === 'EUR';
     fields.price.disabled = total;
     byId('sale-quantity').hidden = total;
@@ -633,8 +723,20 @@ function openSale(row, original = null) {
     byId('sale-currency').textContent = 'Valuta: ' + position.currency +
         (position.unit === 'nominal' ? ' · Prezzo in percentuale del nominale' : '');
     byId('sale-error').textContent = '';
+    updateSaleCreditFields();
     updateSalePreview();
     saleEditor.showModal();
+}
+
+function updateSaleCreditFields() {
+    const { accountId, date, creditDate, creditAmount } = saleForm.elements;
+    const linked = Boolean(accountId.value);
+    creditDate.min = date.value;
+    if (linked && !creditDate.value) creditDate.value = date.value;
+    creditDate.disabled = !linked;
+    creditAmount.disabled = !linked || selling.position.currency === 'EUR';
+    byId('sale-credit-date').hidden = creditDate.disabled;
+    byId('sale-credit-amount').hidden = creditAmount.disabled;
 }
 
 function readSaleFields() {
@@ -683,7 +785,12 @@ function saleFromForm(position, history, id, input, original) {
     if (total && basis !== null && cost !== null && cost - basis > 1e-7) {
         throw new Error('Il costo attribuito supera il capitale di carico residuo.');
     }
-    const sale = { id, date, quantity, gross, fees: fees ?? 0, cost: sameCostInputs ? original.cost : cost, remainingValue,
+    const credit = input.accountId ? {
+        accountId: input.accountId, date: input.creditDate || date,
+        euroCents: input.creditAmount == null ? null : Math.round(input.creditAmount * 100),
+        insertedAt: input.accountId === original?.credit?.accountId ? original.credit.insertedAt : new Date().toISOString()
+    } : null;
+    const sale = { id, date, quantity, gross, fees: fees ?? 0, cost: sameCostInputs ? original.cost : cost, remainingValue, credit,
         rate, estimated: sameCostInputs ? original.estimated : explicitCost === null && calculated !== null && position.averageCost === null };
     const changedSales = [...sales];
     changedSales.splice(index, original ? 1 : 0, sale);
@@ -732,6 +839,8 @@ function updateSalePreview() {
             [total ? 'Saldo residuo' : 'Quantità residua', total ? amount(sale.remainingValue, position.currency) :
                 formatNumber.format(state.quantity)]
         ]) preview.append(element('dt', label), element('dd', value));
+        if (sale.credit) preview.append(element('dt', 'Accredito sul conto'),
+            element('dd', amount(saleCreditCents(sale, position.currency) / 100)));
     } catch (error) {
         errorOutput.textContent = error.message;
     }
@@ -757,11 +866,17 @@ async function deleteSale(position, sale) {
 
 async function updateSales(position, changes) {
     const db = initDB();
-    await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
+    await db.transaction('rw', db.investments, db.investmentQuotes, db.accounts, async () => {
         const current = await db.investments.get(position.id);
         if (!current || current.revision !== position.revision) throw new Error('La posizione è cambiata. Riapri la scheda.');
         const history = await db.investmentQuotes.where('investmentId').equals(position.id).sortBy('date');
         const sales = changes(current, history);
+        const originals = new Map((current.sales ?? []).map(sale => [sale.id, sale.credit]));
+        for (const { id, credit } of sales) {
+            if (credit) await assertAccountLink(db, {
+                accountId: credit.accountId, data: credit.date, dataInserimento: credit.insertedAt
+            }, originals.get(id)?.accountId === credit.accountId);
+        }
         validateSaleHistory({ ...current, sales }, history);
         await db.investments.update(position.id, { sales, revision: crypto.randomUUID() });
     });
@@ -908,9 +1023,9 @@ async function savePosition() {
 }
 
 async function deletePosition(position) {
-    const linked = position.purchases?.some(purchase => purchase.accountId);
+    const linked = position.purchases?.some(purchase => purchase.accountId) || position.sales?.some(sale => sale.credit);
     if (!window.confirm(linked ?
-        'Eliminare la posizione e annullare anche gli addebiti associati ai suoi acquisti?' :
+        'Eliminare la posizione e annullare le operazioni di liquidità associate?' :
         'Eliminare la posizione e il suo storico?')) return;
     const db = initDB();
     await db.transaction('rw', db.investments, db.investmentQuotes, async () => {
@@ -1153,15 +1268,31 @@ function clearChart(id) {
 
 function renderLine() {
     const mode = byId('mode').value;
-    const days = Number(byId('period').value);
+    const period = byId('period').value;
+    const custom = period === 'custom';
+    const from = byId('period-from');
+    const to = byId('period-to');
+    byId('period-from-label').hidden = !custom;
+    byId('period-to-label').hidden = !custom;
+    from.max = to.max = localDate();
+    const empty = byId('line-empty');
+    if (custom && (!validDate(from.value) || !validDate(to.value) ||
+        from.value > to.value || to.value > to.max)) {
+        clearChart('line');
+        empty.hidden = false;
+        empty.textContent = 'Indica un intervallo valido fino alla data di oggi.';
+        return;
+    }
+    const days = Number(period) || 0;
     const start = new Date();
     start.setDate(start.getDate() - days + 1);
-    const cutoff = days ? localDate(start) : '';
+    const cutoff = custom ? from.value : days ? localDate(start) : '';
+    const end = custom ? to.value : '\uffff';
     const inPeriod = portfolio.map(({ position, history, latest, value, cost }) => {
         const performance = mode !== 'price' && position.type === 'Fondo pensione' ?
             positionPerformance(position, latest?.date, value, cost) : null;
         const { points, baseline } = performance ?? investmentSeries(position, history);
-        return { position, baseline, points: points.filter(point => point.date >= cutoff) };
+        return { position, baseline, points: points.filter(point => point.date >= cutoff && point.date <= end) };
     }).filter(row => row.points.length);
     const eligible = inPeriod.filter(row => mode === 'price' || row.baseline > 0);
 
@@ -1172,7 +1303,6 @@ function renderLine() {
     unitField.replaceChildren(...units.map(unit => new Option(unit, unit)));
     if (units.includes(previousUnit)) unitField.value = previousUnit;
     const rows = mode === 'price' ? eligible.filter(row => priceUnit(row.position) === unitField.value) : eligible;
-    const empty = byId('line-empty');
     empty.hidden = rows.length > 0;
     empty.textContent = mode !== 'price' && inPeriod.length ?
         'Serve un valore iniziale positivo. Puoi consultare la vista Valore quota.' :
@@ -1236,20 +1366,28 @@ function renderLine() {
 
 function renderPie() {
     const groups = new Map();
-    const byType = byId('group').value === 'type';
-    for (const { position, valueEur } of portfolio) {
-        if (valueEur === null || valueEur <= 0) continue;
-        const key = byType ? position.type : position.id;
-        const group = groups.get(key) ?? { name: byType ? position.type : position.name, value: 0 };
-        group.value += valueEur;
-        groups.set(key, group);
-    }
+    const mode = byId('group').value;
     const omitted = portfolio.filter(row => row.valueEur === null).length;
     const zero = portfolio.filter(row => row.valueEur === 0).length;
+    if (mode === 'wealth') {
+        const invested = portfolio.reduce((sum, row) => sum + (row.valueEur ?? 0), 0);
+        if (cashTotal > 0) groups.set('cash', { name: 'Liquidità', value: cashTotal });
+        if (invested > 0) groups.set('invested', { name: omitted ? 'Totale investito (parziale)' : 'Totale investito', value: invested });
+    } else {
+        const byType = mode === 'type';
+        for (const { position, valueEur } of portfolio) {
+            if (valueEur === null || valueEur <= 0) continue;
+            const key = byType ? position.type : position.id;
+            const group = groups.get(key) ?? { name: byType ? position.type : position.name, value: 0 };
+            group.value += valueEur;
+            groups.set(key, group);
+        }
+    }
     const note = byId('pie-note');
     note.textContent = [
         !groups.size ? 'Nessun controvalore positivo in euro da mostrare.' : '',
         omitted ? 'Posizioni escluse per quotazione o cambio mancante: ' + omitted + '.' : '',
+        mode === 'wealth' && cashTotal < 0 ? 'Liquidità negativa: ' + amount(cashTotal) + '.' : '',
         zero ? 'Posizioni con peso pari a zero: ' + zero + '.' : ''
     ].filter(Boolean).join(' ');
     note.hidden = !note.textContent;
@@ -1264,7 +1402,8 @@ function renderPie() {
     const values = [...groups.values()];
     const colors = chart.getOption()?.color ?? ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
     const slices = values.map((group, index) => ({
-        ...group, itemStyle: { color: colors[index % colors.length] }
+        ...group, itemStyle: { color: mode === 'wealth' ?
+            (group.name === 'Liquidità' ? '#805b00' : '#403477') : colors[index % colors.length] }
     }));
     chart.setOption({
         aria: { enabled: true },
@@ -1289,7 +1428,7 @@ function renderPie() {
 }
 
 function renderCharts() {
-    renderLine();
+    if (portfolio.length) renderLine();
     renderPie();
 }
 
@@ -1331,7 +1470,7 @@ export function initializeInvestments() {
     const saveInstallment = () => {
         const { date, amount: price, quantity, fees, accountId } = installmentForm.elements;
         return resolveInstallment(confirmingInstallment, {
-            date: date.value, quantity: quantity.valueAsNumber, accountId: accountId.value || null,
+            date: date.value, quantity: quantity.valueAsNumber, accountId: accountId.value === 'none' ? null : accountId.value || null,
             amountCents: Math.round(price.valueAsNumber * 100), feeCents: Math.round(fees.valueAsNumber * 100)
         });
     };
@@ -1389,7 +1528,10 @@ export function initializeInvestments() {
         }
     });
     byId('sale-cancel').addEventListener('click', () => saleEditor.close());
-    saleForm.addEventListener('input', updateSalePreview);
+    saleForm.addEventListener('input', () => {
+        updateSaleCreditFields();
+        updateSalePreview();
+    });
     saleForm.addEventListener('submit', event => {
         event.preventDefault();
         safely(saveSale, byId('sale-error'));
@@ -1398,7 +1540,7 @@ export function initializeInvestments() {
     byId('cancel').addEventListener('click', () => editor.close());
     byId('quote-cancel').addEventListener('click', () => quoteEditor.close());
     byId('export').addEventListener('click', exportPortfolio);
-    for (const id of ['mode', 'period', 'price-unit']) byId(id).addEventListener('change', renderLine);
+    for (const id of ['mode', 'period', 'price-unit', 'period-from', 'period-to']) byId(id).addEventListener('change', renderLine);
     byId('group').addEventListener('change', renderPie);
     form.addEventListener('input', event => {
         updatePositionFields();

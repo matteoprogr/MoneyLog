@@ -1,7 +1,7 @@
 import Dexie from './libs/dexie.mjs';
 
 import { isValid, showErrorToast, showToast } from './main.js';
-import { canLinkAccount, investmentUrl, localDate, nextEditTime, quantityHistory, validDate, validateAccount, validateInvestmentBackup, validatePosition, validateTransfer } from './investmentData.js';
+import { canLinkAccount, installmentDate, investmentUrl, localDate, nextEditTime, quantityHistory, validDate, validateAccount, validateInvestmentBackup, validatePosition, validateTransfer, validateTransferPlan } from './investmentData.js';
 
 
 let db;
@@ -55,6 +55,7 @@ export function initDB() {
         entrate: '++id, &dataInserimento, *categoria, importo, data, [importo+data], [data+importo], ricorrenteId, accountId'
     });
     db.version(11).stores({ accountTransfers: 'id, fromId, toId' });
+    db.version(12).stores({ transferPlans: 'id, fromId, toId' });
 
     initCategorie();
   }
@@ -126,6 +127,8 @@ async function accountOperations(db, id) {
         ...[...income, ...expenses].map(item => [item.data, item.dataInserimento]),
         ...positions.flatMap(position => (position.purchases ?? [])
             .filter(item => item.accountId === id).map(item => [item.date, item.insertedAt])),
+        ...positions.flatMap(position => (position.sales ?? []).map(item => item.credit)
+            .filter(credit => credit?.accountId === id).map(credit => [credit.date, credit.insertedAt])),
         ...[...outgoing, ...incoming].filter(item => !item.deleted).map(item => [item.date, item.updatedAt])
     ];
 }
@@ -137,7 +140,7 @@ function assertAccountDates(account, operations) {
 }
 
 function accountTransaction(db, action) {
-    return db.transaction('rw', db.accounts, db.entrate, db.uscite, db.investments, db.accountTransfers, db.ricorrenze, action);
+    return db.transaction('rw', db.accounts, db.entrate, db.uscite, db.investments, db.accountTransfers, db.transferPlans, db.ricorrenze, action);
 }
 
 function assertAccountVersion(current, opened) {
@@ -166,7 +169,9 @@ export async function removeCashAccount(opened, archive) {
     await accountTransaction(db, async () => {
         const current = await db.accounts.get(opened.id);
         assertAccountVersion(current, opened);
-        if (!archive && (await accountOperations(db, current.id)).length) {
+        if (!archive && ((await accountOperations(db, current.id)).length ||
+            await db.transferPlans.where('fromId').equals(current.id).count() ||
+            await db.transferPlans.where('toId').equals(current.id).count())) {
             throw new Error('Il conto ha operazioni collegate. Aggiorna la sezione per archiviarlo.');
         }
         const series = db.ricorrenze.filter(item => item.accountId === current.id);
@@ -175,8 +180,52 @@ export async function removeCashAccount(opened, archive) {
             const timestamp = nextEditTime(current.updatedAt ?? current.createdAt);
             await db.accounts.update(current.id, { archivedAt: timestamp, updatedAt: timestamp });
         } else {
+            await db.investments.filter(position => position.plan?.accountId === current.id).modify(position => {
+                position.plan.accountId = null;
+                position.revision = crypto.randomUUID();
+            });
             await db.accounts.delete(current.id);
         }
+    });
+}
+
+export async function addTransferPlan(input) {
+    const db = initDB();
+    await db.transaction('rw', db.accounts, db.transferPlans, async () => {
+        const plan = validateTransferPlan({
+            ...input, id: crypto.randomUUID(), offset: 0, paused: false, updatedAt: nextEditTime()
+        });
+        for (const id of [plan.fromId, plan.toId]) {
+            await assertAccountLink(db, { accountId: id, data: plan.date, dataInserimento: plan.updatedAt });
+        }
+        await db.transferPlans.add(plan);
+    });
+}
+
+export async function updateTransferPlan(opened, action) {
+    const db = initDB();
+    await db.transaction('rw', db.accounts, db.transferPlans, db.accountTransfers, async () => {
+        const plan = await db.transferPlans.get(opened.id);
+        if (!plan || plan.updatedAt !== opened.updatedAt || plan.offset !== opened.offset) {
+            throw new Error('Il piano è cambiato. Riapri il menu.');
+        }
+        const updatedAt = nextEditTime(plan.updatedAt);
+        if (action === 'toggle') {
+            await db.transferPlans.update(plan.id, { paused: !plan.paused, updatedAt });
+            return;
+        }
+        const date = installmentDate(plan);
+        if (plan.paused || date > localDate()) throw new Error('La rata non è disponibile.');
+        if (action === 'confirm') {
+            for (const id of [plan.fromId, plan.toId]) {
+                await assertAccountLink(db, { accountId: id, data: date, dataInserimento: updatedAt });
+            }
+            await db.accountTransfers.add(validateTransfer({
+                ...plan, id: plan.id + ':' + date, date, createdAt: updatedAt, updatedAt
+            }));
+        }
+        const next = validateTransferPlan({ ...plan, offset: plan.offset + 1, updatedAt });
+        await db.transferPlans.put(next);
     });
 }
 
@@ -818,7 +867,7 @@ async function esportaDatabase() {
   try {
       overlaySpinner.style.display = 'flex';
       const result = await db.transaction('r', db.uscite, db.entrate, db.progetti, db.coloriCategorie,
-        db.budget, db.ricorrenze, db.deletedTrs, db.accounts, db.accountTransfers, db.investments, db.investmentQuotes, async () => {
+        db.budget, db.ricorrenze, db.deletedTrs, db.accounts, db.accountTransfers, db.transferPlans, db.investments, db.investmentQuotes, async () => {
         const spese = await queryTrns({}, false);
         const entrate = await queryTrns({}, true);
         const backup = {
@@ -840,8 +889,9 @@ async function esportaDatabase() {
                 .map(({ seriesId, data }) => ({ seriesId, data })),
             accounts: await db.accounts.toArray(),
             accountTransfers: await db.accountTransfers.toArray(),
+            transferPlans: await db.transferPlans.toArray(),
             investments: {
-                version: 3,
+                version: 4,
                 positions: await db.investments.toArray(),
                 quotes: await db.investmentQuotes.toArray()
             },
@@ -945,10 +995,14 @@ async function importaDatabase(file) {
         if (new Set(transfers.map(transfer => transfer.id)).size !== transfers.length) {
             throw new Error('Trasferimenti duplicati nel backup.');
         }
+        const transferPlans = (result.transferPlans ?? []).map(validateTransferPlan);
+        if (new Set(transferPlans.map(plan => plan.id)).size !== transferPlans.length) {
+            throw new Error('Piani di trasferimento duplicati nel backup.');
+        }
 
         stage = 'Salvataggio nel database';
         await db.transaction("rw", db.progetti, db.budget, db.ricorrenze, db.uscite, db.entrate, db.categorie, db.coloriCategorie,
-          db.investments, db.investmentQuotes, db.accounts, db.accountTransfers, db.deletedTrs, async () => {
+          db.investments, db.investmentQuotes, db.accounts, db.accountTransfers, db.transferPlans, db.deletedTrs, async () => {
             const changedAccounts = [];
             for (const account of accounts) {
                 const existing = await db.accounts.get(account.id);
@@ -962,7 +1016,7 @@ async function importaDatabase(file) {
             }
             for (const transfer of transfers) {
                 const existing = await db.accountTransfers.get(transfer.id);
-                if (existing && existing.createdAt !== transfer.createdAt) {
+                if (existing && existing.createdAt !== transfer.createdAt && !transfer.id.includes(':')) {
                     throw new Error('Un trasferimento nel backup ha lo stesso identificativo ma una data di creazione diversa.');
                 }
                 if (existing && existing.updatedAt >= transfer.updatedAt) continue;
@@ -974,6 +1028,16 @@ async function importaDatabase(file) {
                     }
                 }
                 await db.accountTransfers.put(transfer);
+            }
+            for (const plan of transferPlans) {
+                const existing = await db.transferPlans.get(plan.id);
+                for (const id of [plan.fromId, plan.toId]) {
+                    if (!await db.accounts.get(id)) throw new Error('Conto del trasferimento ricorrente non trovato.');
+                }
+                const latest = !existing || plan.updatedAt > existing.updatedAt ? plan : existing;
+                const merged = { ...latest, offset: Math.max(plan.offset, existing?.offset ?? 0) };
+                while (await db.accountTransfers.get(merged.id + ':' + installmentDate(merged))) merged.offset++;
+                await db.transferPlans.put(validateTransferPlan(merged));
             }
             if (investments) {
                 const protectedDates = new Map();
@@ -992,6 +1056,14 @@ async function importaDatabase(file) {
                         if (!position.sales.length) position.sales = existing.sales ?? [];
                         position.quoteSource ??= existing.quoteSource ?? null;
                     }
+                    if (investments.version < 4 && existing) {
+                        const sales = new Map(position.sales.map(sale => [sale.id, sale]));
+                        for (const sale of existing.sales ?? []) if (sale.credit) sales.set(sale.id, sale);
+                        position.sales = [...sales.values()];
+                        if (position.plan?.id === existing.plan?.id && existing.plan?.accountId) {
+                            position.plan.accountId = existing.plan.accountId;
+                        }
+                    }
                     if (investments.version < 3 && existing) {
                         position.plan = existing.plan ?? null;
                         position.purchases = existing.purchases ?? [];
@@ -1009,6 +1081,14 @@ async function importaDatabase(file) {
                         await assertAccountLink(db, {
                             accountId: purchase.accountId, data: purchase.date, dataInserimento: purchase.insertedAt
                         }, true);
+                    }
+                    for (const sale of position.sales) {
+                        if (sale.credit) await assertAccountLink(db, {
+                            accountId: sale.credit.accountId, data: sale.credit.date, dataInserimento: sale.credit.insertedAt
+                        }, true);
+                    }
+                    if (position.plan?.accountId && !await db.accounts.get(position.plan.accountId)) {
+                        throw new Error('Conto del piano di investimento non trovato.');
                     }
                     const validated = validatePosition({ ...position, initialQuoteDate });
                     await db.investments.put({ ...validated, revision: crypto.randomUUID() });

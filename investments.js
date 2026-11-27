@@ -24,6 +24,7 @@ let selling;
 let renderVersion = 0;
 const expandedPositions = new Set();
 const expandedHistories = new Set();
+const historyPages = new Map();
 
 const form = byId('form');
 const fields = form.elements;
@@ -66,7 +67,7 @@ function closeActionMenu(restoreFocus = false) {
     if (restoreFocus) trigger.focus();
 }
 
-function actionMenu(label, actions) {
+function actionMenu(label, actions, indicators = []) {
     const menu = element('div', '', 'investment-action-menu');
     const panel = element('div', '', 'investment-action-menu-panel');
     panel.hidden = true;
@@ -86,6 +87,14 @@ function actionMenu(label, actions) {
             closeActionMenu(true);
             action();
         }));
+    }
+    for (const [symbol, description] of indicators) {
+        const indicator = element('span', symbol === 'bell' ? '' : symbol, 'investment-indicator');
+        if (symbol === 'bell') indicator.classList.add('investment-indicator-bell');
+        indicator.setAttribute('role', 'img');
+        indicator.setAttribute('aria-label', description);
+        indicator.title = description;
+        menu.append(indicator);
     }
     menu.append(trigger, panel);
     return menu;
@@ -297,12 +306,13 @@ function renderTransferPlans(plans, accounts) {
         const unavailable = !from || !to || from.archivedAt || to.archivedAt;
         const route = (from?.name ?? 'Conto non disponibile') + ' → ' + (to?.name ?? 'Conto non disponibile');
         const due = installmentDate(plan);
+        const pending = !plan.paused && due <= localDate();
         const apply = action => safely(async () => {
             await updateTransferPlan(plan, action);
             await renderInvestments();
         });
         const actions = [[plan.paused ? 'Riprendi piano' : 'Sospendi piano', () => apply('toggle')]];
-        if (!plan.paused && due <= localDate()) {
+        if (pending) {
             if (!unavailable) actions.push(['Conferma rata', () => apply('confirm')]);
             actions.push(['Salta rata', () => {
                 if (window.confirm('Saltare il trasferimento del ' + formatInvestmentDate(due) + '?')) apply('skip');
@@ -311,7 +321,8 @@ function renderTransferPlans(plans, accounts) {
         const status = unavailable ? 'Conto non disponibile' : plan.paused ? 'Sospeso' : 'Scadenza ' + formatInvestmentDate(due);
         const row = element('div', '', 'investment-cash-row');
         row.append(metric(route, amount(plan.cents / 100) + ' · ' + status),
-            actionMenu('Azioni trasferimento ricorrente ' + route, actions));
+            actionMenu('Azioni trasferimento ricorrente ' + route, actions,
+                pending ? [['bell', unavailable ? 'Rata da gestire · Conto non disponibile' : 'Rata da confermare']] : []));
         return row;
     }));
 }
@@ -367,6 +378,7 @@ function renderPlans(rows) {
     byId('plans').replaceChildren(...plans.map(position => {
         const { plan } = position;
         const due = installmentDate(plan);
+        const pending = !plan.paused && due <= localDate();
         const row = element('div', '', 'investment-cash-row');
         const actions = [
             ['Modifica piano', () => openPlan(position)],
@@ -376,7 +388,7 @@ function renderPlans(rows) {
                 showToast(plan.paused ? 'Piano ripreso' : 'Piano sospeso');
             })]
         ];
-        if (!plan.paused && due <= localDate()) {
+        if (pending) {
             actions.push(['Conferma rata', () => safely(() => openInstallment(position))],
                 ['Salta rata', () => safely(async () => {
                     if (window.confirm('Saltare la rata del ' + formatInvestmentDate(due) + '?')) {
@@ -387,7 +399,8 @@ function renderPlans(rows) {
         const details = element('div');
         details.append(metric(position.name, amount(plan.amountCents / 100, position.currency)),
             element('small', plan.paused ? 'Sospeso' : 'Scadenza ' + formatInvestmentDate(due), 'investment-cash-detail'));
-        row.append(details, actionMenu('Azioni piano ' + position.name, actions));
+        row.append(details, actionMenu('Azioni piano ' + position.name, actions,
+            pending ? [['bell', 'Rata da confermare']] : []));
         return row;
     }));
 }
@@ -521,11 +534,41 @@ async function resolveInstallment(opened, purchase = null) {
     showToast(purchase ? 'Acquisto registrato' : 'Rata saltata');
 }
 
+function appendPagedHistory(section, key, records, renderRow) {
+    const pageSize = 10;
+    const pageCount = Math.ceil(records.length / pageSize);
+    const list = element('ul');
+    section.append(list);
+    let page = Math.min(historyPages.get(key) ?? 0, pageCount - 1);
+    const controls = element('div', '', 'investment-history-pages');
+    const status = element('small');
+    status.setAttribute('aria-live', 'polite');
+    const previous = button('‹', () => showPage(page - 1));
+    previous.className = 'navigation-arrow';
+    previous.setAttribute('aria-label', 'Pagina precedente');
+    const next = button('›', () => showPage(page + 1));
+    next.className = 'navigation-arrow';
+    next.setAttribute('aria-label', 'Pagina successiva');
+    function showPage(index) {
+        page = index;
+        historyPages.set(key, page);
+        list.replaceChildren(...records.slice(page * pageSize, (page + 1) * pageSize).map(renderRow));
+        status.textContent = 'Pagina ' + (page + 1) + ' di ' + pageCount;
+        previous.disabled = page === 0;
+        next.disabled = page === pageCount - 1;
+    }
+    if (pageCount > 1) {
+        controls.append(previous, status, next);
+        section.append(controls);
+    }
+    showPage(page);
+}
+
 function purchaseHistory(position) {
     const section = element('details', '', 'investment-quote-history');
     section.append(element('summary', 'Storico acquisti (' + position.purchases.length + ')'));
-    const list = element('ul');
-    for (const purchase of [...position.purchases].sort((a, b) => b.date.localeCompare(a.date))) {
+    const records = [...position.purchases].sort((a, b) => b.date.localeCompare(a.date));
+    appendPagedHistory(section, 'purchase:' + position.id, records, purchase => {
         const row = element('li');
         const info = element('div', '', 'investment-quote-info');
         info.append(element('strong', formatInvestmentDate(purchase.date) + ' · ' +
@@ -533,9 +576,8 @@ function purchaseHistory(position) {
         element('small', amount(purchase.amountCents / 100, position.currency) + ' investiti · ' +
             amount(purchase.feeCents / 100, position.currency) + ' di commissioni · rata del ' + formatInvestmentDate(purchase.due)));
         row.append(info);
-        list.append(row);
-    }
-    section.append(list);
+        return row;
+    });
     return section;
 }
 
@@ -599,12 +641,17 @@ function positionCard(row) {
     if (!closed && position.unit !== 'total' && !position.plan) {
         actions.push(['Configura piano ricorrente', () => openPlan(position)]);
     }
+    if (history.length || position.purchases?.length || position.sales?.length) {
+        actions.push(['Scarica storico CSV', () => safely(() => exportPositionHistory(row))]);
+    }
     actions.push(['Elimina', () => safely(() => deletePosition(position))]);
     if (position.purchases?.length) card.append(purchaseHistory(position));
     if (position.sales?.length) card.append(saleHistory(row));
     if (history.length) card.append(quoteHistory(position, history, purchases, closed));
     const wrapper = element('div', '', 'investment-position-wrapper');
-    wrapper.append(actionMenu('Azioni posizione ' + position.name, actions), card);
+    const indicators = !closed && position.plan && !position.plan.paused ?
+        [['↻', 'Piano di investimento attivo']] : [];
+    wrapper.append(actionMenu('Azioni posizione ' + position.name, actions, indicators), card);
     return wrapper;
 }
 
@@ -616,8 +663,7 @@ function quoteHistory(position, history, purchases, closed) {
         else expandedHistories.delete(position.id);
     });
     section.append(element('summary', 'Storico quotazioni (' + history.length + ')'));
-    const list = element('ul');
-    for (const quote of [...history].reverse()) {
+    appendPagedHistory(section, 'quote:' + position.id, [...history].reverse(), quote => {
         const row = element('li');
         const info = element('div', '', 'investment-quote-info');
         const date = element('time', formatInvestmentDate(quote.date));
@@ -636,9 +682,8 @@ function quoteHistory(position, history, purchases, closed) {
             row.classList.add('investment-quote-with-actions');
             row.prepend(actionMenu('Azioni quotazione del ' + formatInvestmentDate(quote.date), actions));
         }
-        list.append(row);
-    }
-    section.append(list);
+        return row;
+    });
     return section;
 }
 
@@ -657,8 +702,7 @@ function saleHistory(row) {
     if (closed) totals.append(element('dt', 'Data di chiusura'),
         element('dd', formatInvestmentDate(sales.at(-1).date)));
     section.append(totals);
-    const list = element('ul');
-    for (const sale of sales.reverse()) {
+    appendPagedHistory(section, 'sale:' + position.id, sales.reverse(), sale => {
         const net = sale.gross - sale.fees;
         const date = element('time', formatInvestmentDate(sale.date));
         date.dateTime = sale.date;
@@ -681,9 +725,8 @@ function saleHistory(row) {
             ['Modifica', () => openSale(row, sale)],
             ['Elimina', () => safely(() => deleteSale(position, sale))]
         ]), date, info);
-        list.append(item);
-    }
-    section.append(list);
+        return item;
+    });
     return section;
 }
 
@@ -1432,6 +1475,36 @@ function renderCharts() {
     renderPie();
 }
 
+function exportPositionHistory({ position, history, purchases }) {
+    const columns = {
+        date: 'Data', kind: 'Operazione', currency: 'Valuta', quote: 'Quotazione', quantity: 'Quantità o nominale',
+        totalQuantity: 'Quote totali registrate', gross: 'Importo lordo o investito', fees: 'Commissioni',
+        net: 'Incasso netto', cost: 'Costo attribuito', remaining: 'Saldo residuo', account: 'Conto',
+        due: 'Data rata', creditDate: 'Data accredito', creditEuros: 'Accredito EUR',
+        rate: 'Cambio EUR', sourcePeriod: 'Periodo fonte', source: 'URL fonte'
+    };
+    const accounts = new Map(cashAccounts.map(account => [account.id, account.name]));
+    const entries = [
+        ...history.map(quote => ({
+            date: quote.date, kind: 'Quotazione', quote: quote.value, quantity: purchases.get(quote.date),
+            totalQuantity: quote.totalQuantity, sourcePeriod: quote.sourcePeriod, source: quote.sourceUrl
+        })),
+        ...(position.purchases ?? []).map(purchase => ({
+            date: purchase.date, kind: 'Acquisto', quantity: purchase.quantity, gross: purchase.amountCents / 100,
+            fees: purchase.feeCents / 100, account: accounts.get(purchase.accountId), due: purchase.due
+        })),
+        ...(position.sales ?? []).map(sale => ({
+            date: sale.date, kind: position.unit === 'total' ? 'Riscatto' : 'Vendita', quantity: sale.quantity,
+            gross: sale.gross, fees: sale.fees, net: sale.gross - sale.fees, cost: sale.cost, remaining: sale.remainingValue,
+            account: accounts.get(sale.credit?.accountId), creditDate: sale.credit?.date,
+            creditEuros: sale.credit ? saleCreditCents(sale, position.currency) / 100 : null, rate: sale.rate
+        }))
+    ].sort((left, right) => right.date.localeCompare(left.date));
+    const rows = entries.map(entry => Object.keys(columns).map(key => key === 'currency' ? position.currency : entry[key]));
+    const slug = position.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 70) || 'posizione';
+    downloadCsv('moneylog-storico-' + slug + '-' + localDate() + '.csv', Object.values(columns), rows);
+}
+
 function exportPortfolio() {
     const weightsOnly = byId('weights').checked;
     const total = portfolio.reduce((sum, row) => sum + (row.valueEur ?? 0), 0);
@@ -1448,8 +1521,11 @@ function exportPortfolio() {
         row.push(valueEur === null || total <= 0 ? null : Number((valueEur / total * 100).toFixed(6)));
         return row;
     });
+    downloadCsv('moneylog-portafoglio-' + localDate() + '.csv', columns, rows);
+}
+
+function downloadCsv(name, columns, rows) {
     const csv = [columns, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
-    const name = 'moneylog-portafoglio-' + localDate() + '.csv';
     if (window.MoneyLogAndroid) {
         window.MoneyLogAndroid.saveFile(name, 'text/csv', '\uFEFF' + csv);
         return;

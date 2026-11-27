@@ -108,10 +108,10 @@
 
     <!-- OVERLAY RICERCA -->
     <div id="overlayRicerca">
-        <div class="input-group row">
-            <button class="frecciaBtn" type="button" id="indietro"> < </button>
+        <div class="input-group row search-period">
+            <button class="navigation-arrow" type="button" id="indietro" aria-label="Periodo precedente">‹</button>
             <input type="text" id="date-range">
-            <button class="frecciaBtn" type="button" id="avanti"> > </button>
+            <button class="navigation-arrow" type="button" id="avanti" aria-label="Periodo successivo">›</button>
         </div>
         <div class="input-group">
             <input  type="text" id="ricerca-categorie-over" placeholder="Cerca fra le tue categorie">
@@ -182,9 +182,9 @@
     </div>
 
     <div class="input-group row chart-period">
-        <button class="frecciaBtn" type="button" id="indietroGraph"> < </button>
+        <button class="navigation-arrow" type="button" id="indietroGraph" aria-label="Periodo precedente">‹</button>
         <input type="text" id="date-range-graph">
-        <button class="frecciaBtn" type="button" id="avantiGraph"> > </button>
+        <button class="navigation-arrow" type="button" id="avantiGraph" aria-label="Periodo successivo">›</button>
     </div>
 
     <div class="movimenti-tabs graTabs">
@@ -366,7 +366,7 @@
                     <label id="investment-price-unit-label" hidden>Unità<select id="investment-price-unit"></select></label>
                     <label>Periodo<select id="investment-period">
                         <option value="0">Tutto lo storico</option>
-                        <option value="30">Ultimi 30 giorni</option>
+                        <option value="30" selected>Ultimi 30 giorni</option>
                         <option value="90">Ultimi 90 giorni</option>
                         <option value="365">Ultimo anno</option>
                         <option value="custom">Personalizzato</option>
@@ -606,7 +606,7 @@
     </div>
     <div class="btn" id="android-download">
         <h3>App Android</h3>
-        <p id="android-apk-details">Versione 1.1.15</p>
+        <p id="android-apk-details">Versione 1.1.20</p>
         <a id="android-apk-link" href="./downloads/MoneyLog.apk" download="MoneyLog.apk">Scarica APK per Android</a>
     </div>
 
@@ -695,14 +695,14 @@
         </p>
 
         <ul class="info-list">
-            <li><strong>Movimenti:</strong> registra entrate e uscite, anche ricorrenti. Negli overlay puoi selezionare il conto interessato oppure scegliere Nessun conto. Usa la ricerca per filtrare per periodo, categoria o importo.</li>
-            <li><strong>Grafici:</strong> visualizza l'andamento delle tue finanze nel tempo. Il grafico a barre mostra l'andamento mensile, mentre i grafici a torta ripartiscono uscite ed entrate per categoria. Naviga tra i periodi con le frecce o seleziona un intervallo personalizzato.</li>
+            <li><strong>Movimenti:</strong> registra entrate e uscite, anche ricorrenti. Per un nuovo movimento viene proposto l’ultimo conto idoneo usato, oppure il primo disponibile. Puoi cambiarlo o scegliere Nessun conto. In modifica resta selezionato il valore salvato. Nella Ricerca usa le frecce ‹ › per cambiare mese o il calendario per scegliere un intervallo. Puoi filtrare anche per categoria o importo.</li>
+            <li><strong>Grafici:</strong> usa le frecce ‹ › del calendario condiviso per cambiare mese, oppure seleziona un intervallo personalizzato. I grafici a torta ripartiscono entrate e uscite per categoria nell’intervallo selezionato. Il grafico a barre mostra l’andamento mensile dell’anno visualizzato nel calendario.</li>
             <li><strong>Budget:</strong> imposta un limite di spesa per categoria. Per seguire un viaggio o un’altra iniziativa, associa lo stesso progetto al budget e alle relative uscite. Un’uscita può contribuire sia al budget generale della categoria sia a quello del progetto, se rientra nel periodo di entrambi. Usa un periodo personalizzato per includere spese sostenute in mesi diversi. La barra di avanzamento cambia colore man mano che ti avvicini al limite.</li>
             <li><strong>Categorie:</strong> tocca il cerchio colorato accanto a una categoria per modificarne il nome e il colore nella stessa finestra, poi premi Salva. Per la categoria predefinita «Altro» puoi cambiare solo il colore. Puoi anche aggiungere, cercare ed eliminare categorie.</li>
             <li><strong>Investimenti:</strong> registra le posizioni, gestisci i piani ricorrenti e i conti in euro, trasferisci liquidità e consulta il patrimonio. Puoi anche consultare andamento e composizione delle posizioni ed esportare il portafoglio in CSV.
                 <button id="investment-guide-open" type="button">Apri guida investimenti</button>
             </li>
-            <li><strong>Impostazioni:</strong> importa o esporta il backup JSON. Il backup include movimenti, conti, trasferimenti, investimenti, piani e acquisti. I dati sono salvati su questo dispositivo e puoi cancellarli dalle impostazioni.</li>
+            <li><strong>Impostazioni:</strong> esporta il backup JSON per conservare i dati o trasferirli tra web e Android. Include movimenti, conti, trasferimenti, investimenti e piani ricorrenti. L’importazione integra i dati del backup con quelli già presenti sul dispositivo. Per consultare il riepilogo del portafoglio o lo storico di una posizione, usa le esportazioni CSV in Investimenti.</li>
         </ul>
         <dialog id="investment-guide" class="investment-dialog investment-guide" aria-labelledby="investment-guide-title">
             <div class="investment-guide-heading">
@@ -728,7 +728,10 @@
         <p>Usa <strong>Trasferisci liquidità</strong> per un trasferimento singolo o ricorrente. Se trasferisci 200 € tra due conti attivi, il primo saldo scende di 200 € e il secondo sale di 200 €. Liquidità complessiva, patrimonio e report delle entrate e delle uscite restano invariati. Puoi confermare o saltare le rate scadute, sospendere il piano e correggere o annullare un trasferimento dallo storico.</p>
         <p>Durante una vendita o un riscatto puoi scegliere il conto su cui accreditare l’incasso netto. Nei piani di investimento in euro puoi indicare il conto da proporre quando confermi una rata.</p>
         <p>Nel grafico delle quotazioni puoi scegliere un periodo <strong>Personalizzato</strong>, con due date incluse. Nel grafico a torta scegli <strong>Liquidità e investimenti</strong> per confrontare il totale dei conti attivi con il controvalore delle posizioni aperte.</p>
-        <p>Negli storici, i tre puntini aprono le azioni della singola riga. La <strong>quotazione iniziale</strong> offre solo <strong>Modifica</strong>. Quando esaurisci una posizione, la ritrovi con il suo storico in <strong>Posizioni chiuse</strong>. Il menu della scheda chiusa offre solo <strong>Elimina</strong>, mentre puoi ancora modificare o eliminare una vendita o un riscatto dal relativo storico.</p>
+        <p>Il grafico delle quotazioni parte dagli ultimi 30 giorni. Gli storici delle posizioni mostrano fino a 10 righe per pagina. Dal menu di una posizione puoi scegliere <strong>Scarica storico CSV</strong> per esportare tutte le sue registrazioni.</p>
+        <p>La campanella nera accanto al menu di un piano o di un trasferimento ricorrente segnala una rata da gestire. Sulla scheda del titolo, il simbolo ↻ indica che il piano è attivo.</p>
+        <p>Negli storici, i tre puntini aprono le azioni della singola riga. La <strong>quotazione iniziale</strong> offre solo <strong>Modifica</strong>. Quando esaurisci una posizione, la ritrovi con il suo storico in <strong>Posizioni chiuse</strong>. Dal menu della scheda chiusa puoi scaricare lo storico CSV o eliminare la posizione. Dal relativo storico puoi ancora modificare o eliminare una vendita o un riscatto.</p>
+        <p>In <strong>Configura fonte</strong>, un URL di justETF propone <strong>gettex</strong> nel campo <strong>Sezione, comparto o mercato</strong> se è vuoto. Puoi indicare un mercato diverso.</p>
         <p>Premi <strong>Aggiorna quotazioni</strong> (🔄) accanto al <strong>+</strong> per leggere le fonti configurate delle posizioni aperte. MoneyLog usa la data pubblicata e aggiunge o aggiorna la quotazione di quel giorno. Per le fonti mensili usa l’ultimo giorno del mese e mostra il periodo originale nello storico. Il riepilogo finale indica quali titoli richiedono una verifica. Usa l’app Android per le fonti che il browser non riesce a leggere.</p>
         </dialog>
     </div>

@@ -547,21 +547,37 @@ export function overlayBudget() {
 }
 
 
+const lastMovementAccountKey = 'moneylog-last-movement-account';
+let lastMovementAccount;
+
 async function prepareMovementAccounts(form, date, movement) {
-    const accounts = await initDB().accounts.toCollection().sortBy('name');
+    const accounts = await initDB().accounts.toArray();
+    accounts.sort((left, right) => left.name.localeCompare(right.name, 'it', { sensitivity: 'base' }));
     const select = form.elements.accountId;
-    function refresh(selected) {
+    if (lastMovementAccount === undefined) {
+        try { lastMovementAccount = localStorage.getItem(lastMovementAccountKey); } catch { lastMovementAccount = null; }
+    }
+    let manuallySelected = Boolean(movement);
+    let selected = movement?.accountId ?? '';
+    function refresh() {
         const eligible = accounts.filter(account => (!account.archivedAt || movement?.accountId === account.id) &&
             canLinkAccount(account, date.value, movement ? movement.dataInserimento : new Date().toISOString()));
+        if (!manuallySelected) {
+            selected = eligible.find(account => account.id === lastMovementAccount)?.id ?? eligible[0]?.id ?? '';
+        }
         select.replaceChildren(new Option('Nessun conto', ''), ...eligible.map(account =>
             new Option(account.name + (account.archivedAt ? ' (archiviato)' : ''), account.id)));
-        if (eligible.some(account => account.id === selected)) select.value = selected;
-        if (selected && !select.value) {
+        if (selected && !eligible.some(account => account.id === selected)) {
             select.add(new Option('Conto non disponibile per questa data', selected, false, true));
         }
+        select.value = selected;
     }
-    refresh(movement?.accountId);
-    date.onchange = () => refresh(select.value);
+    refresh();
+    date.onchange = refresh;
+    select.onchange = () => {
+        manuallySelected = true;
+        selected = select.value;
+    };
 }
 
 export async function overlayAddSpesa() {
@@ -665,6 +681,10 @@ openBtn.addEventListener('click', async (e) => {
             const tableName = tab ? "entrate" : "uscite";
             const trsOb = await trsObject(transazione, tableName);
             await aggiungiMovimento(trsOb, tableName, newProject);
+            if (trsOb.accountId) {
+                lastMovementAccount = trsOb.accountId;
+                try { localStorage.setItem(lastMovementAccountKey, lastMovementAccount); } catch { /* session fallback */ }
+            }
             overlay.classList.remove("showOverlay");
             saveCategoria(trsOb.categoria);
             createCriteri();

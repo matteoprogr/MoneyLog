@@ -17,6 +17,21 @@ let candidates = [];
 let revision = 0;
 let busy = false;
 let callbacks;
+let automaticContext = false;
+
+function updateDefaultContext(form) {
+    const { url, context } = form.elements;
+    let hostname = '';
+    try { hostname = new URL(url.value).hostname; } catch { /* incomplete address */ }
+    const justEtf = hostname === 'justetf.com' || hostname.endsWith('.justetf.com');
+    if (justEtf && !context.value.trim()) {
+        context.value = 'gettex';
+        automaticContext = true;
+    } else if (!justEtf && automaticContext) {
+        context.value = '';
+        automaticContext = false;
+    }
+}
 
 function numericValue(raw) {
     let value = raw.replace(/[\s\u00a0]/g, '').replace('−', '-');
@@ -194,6 +209,8 @@ export function openQuoteSource(position) {
     form.elements.url.value = position.quoteSource?.url ?? (position.url || fallback);
     form.elements.label.value = position.quoteSource?.label ?? '';
     form.elements.context.value = position.quoteSource?.context ?? '';
+    automaticContext = false;
+    updateDefaultContext(form);
     byId('title').textContent = 'Configura fonte · ' + position.name;
     byId('status').textContent = position.unit === 'total' ?
         'Usa una fonte che riporti il saldo totale del rendiconto.' : '';
@@ -315,6 +332,8 @@ export function initializeQuoteSources(actions) {
     byId('cancel').addEventListener('click', () => byId('editor').close());
     byId('editor').addEventListener('close', () => { revision++; });
     form.addEventListener('input', event => {
+        if (event.target === form.elements.context) automaticContext = false;
+        if (event.target === form.elements.url) updateDefaultContext(form);
         if (event.target === form.elements.candidate) {
             byId('use').disabled = event.target.value === '';
         } else {
